@@ -9,7 +9,7 @@
 
 // lock client constructor
 template <typename T>
-lock_client_crtp<T>::lock_client_crtp(std::string_view url){
+lock_http2_client_crtp<T>::lock_http2_client_crtp(std::string_view url){
 
     // initialisation of class wide variables
     if(!wolfssl_init){
@@ -117,7 +117,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url){
                 
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                         
                         error = true;
                         
@@ -145,7 +145,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url){
                     
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                         
                         error = true;
                         
@@ -324,7 +324,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url){
                         
                             if(c_path_new == NULL){
                             
-                                strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                                 
                                 error = true;
                                 
@@ -350,7 +350,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url){
                         
                             if(c_path_new == NULL){
                             
-                                strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                                 
                                 error = true;
                                 
@@ -676,7 +676,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url){
 }
 
 template <typename T>
-lock_client_crtp<T>::lock_client_crtp(std::string_view url, in_addr* interface_address, char* interface_name){
+lock_http2_client_crtp<T>::lock_http2_client_crtp(std::string_view url, in_addr* interface_address, char* interface_name){
 
     // initialisation of class wide variables
     if(!wolfssl_init){
@@ -780,7 +780,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url, in_addr* interface_a
                 
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                         
                         error = true;
                         
@@ -808,7 +808,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url, in_addr* interface_a
                     
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                         
                         error = true;
                         
@@ -1003,7 +1003,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url, in_addr* interface_a
                                 
                                     if(c_path_new == NULL){
                                     
-                                        strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                                         
                                         error = true;
                                         
@@ -1029,7 +1029,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url, in_addr* interface_a
                                 
                                     if(c_path_new == NULL){
                                     
-                                        strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                                         
                                         error = true;
                                         
@@ -1323,7 +1323,7 @@ lock_client_crtp<T>::lock_client_crtp(std::string_view url, in_addr* interface_a
 
 // lock client parameterless constructor
 template <typename T>
-lock_client_crtp<T>::lock_client_crtp(){
+lock_http2_client_crtp<T>::lock_http2_client_crtp(){
 
     // initialisation of class wide variables
     if(!wolfssl_init){
@@ -1387,7 +1387,7 @@ lock_client_crtp<T>::lock_client_crtp(){
 
 // lock client destructor
 template <typename T>
-lock_client_crtp<T>::~lock_client_crtp(){
+lock_http2_client_crtp<T>::~lock_http2_client_crtp(){
 
     // close the websocket connection if any
     if(client_state == OPEN){
@@ -1444,21 +1444,21 @@ lock_client_crtp<T>::~lock_client_crtp(){
 }
 
 template <typename T>
-inline bool lock_client_crtp<T>::status(){ // returns the error status of a lock_client instance
+inline bool lock_http2_client_crtp<T>::status(){ // returns the error status of a lock_http2_client instance
     
     return error;
     
 }
 
 template <typename T>
-inline char* lock_client_crtp<T>::get_error_message(){ // returns the error message: the reason why a lock_client instance's error flag is set
+inline char* lock_http2_client_crtp<T>::get_error_message(){ // returns the error message: the reason why a lock_http2_client instance's error flag is set
     
     return error_buffer;
     
 }
 
 template <typename T>
-inline bool lock_client_crtp<T>::is_open(){
+inline bool lock_http2_client_crtp<T>::is_open(){
 
     if(client_state == OPEN)
         return true;
@@ -1468,7 +1468,7 @@ inline bool lock_client_crtp<T>::is_open(){
 }
 
 template <typename T>
-bool lock_client_crtp<T>::ping(){ // sends a ping on an established websocket connection
+bool lock_http2_client_crtp<T>::ping(){ // sends a ping on an established websocket connection
     
     if(!error){ // only continue if no error
         
@@ -1534,7 +1534,7 @@ bool lock_client_crtp<T>::ping(){ // sends a ping on an established websocket co
 }
 
 template <typename T>
-bool lock_client_crtp<T>::pong(int ping_data_len){ // sends out a pong frame unsolicited or in response to a received ping frame
+bool lock_http2_client_crtp<T>::pong(int ping_data_len){ // sends out a pong frame unsolicited or in response to a received ping frame
     
     if(!error){ // only continue if no error
         
@@ -1620,7 +1620,7 @@ bool lock_client_crtp<T>::pong(int ping_data_len){ // sends out a pong frame uns
 }
 
 template <typename T>
-inline bool lock_client_crtp<T>::set_ping_backlog(int backlog_num){
+inline bool lock_http2_client_crtp<T>::set_ping_backlog(int backlog_num){
     
     if(!error){ // only continue if no error
         
@@ -1634,7 +1634,7 @@ inline bool lock_client_crtp<T>::set_ping_backlog(int backlog_num){
 }
 
 template <typename T>
-inline bool lock_client_crtp<T>::clear(){ // clear the error flag of a lock client in open state
+inline bool lock_http2_client_crtp<T>::clear(){ // clear the error flag of a lock client in open state
 
     if(client_state == OPEN){
             
@@ -1649,7 +1649,7 @@ inline bool lock_client_crtp<T>::clear(){ // clear the error flag of a lock clie
 }
 
 template <typename T>
-bool lock_client_crtp<T>::send(std::string_view payload_data){ // sends data passed as parameter along an established websocket connection
+bool lock_http2_client_crtp<T>::send(std::string_view payload_data){ // sends data passed as parameter along an established websocket connection
 
     if(!error){ // only continue if no error
         
@@ -2142,7 +2142,7 @@ bool lock_client_crtp<T>::send(std::string_view payload_data){ // sends data pas
 }
 
 template <typename T>
-inline int lock_client_crtp<T>::recv_data(char* data_array, int length_of_array_data, int length_of_array){
+inline int lock_http2_client_crtp<T>::recv_data(char* data_array, int length_of_array_data, int length_of_array){
 
     // we call the derived class recv data implementation
     return static_cast<T*>(this)->recv_data(data_array, length_of_array_data, length_of_array);
@@ -2150,7 +2150,7 @@ inline int lock_client_crtp<T>::recv_data(char* data_array, int length_of_array_
 }
 
 template <typename T>
-inline int lock_client_crtp<T>::recv_pong(char* data_array, int length_of_array_data, int length_of_array){
+inline int lock_http2_client_crtp<T>::recv_pong(char* data_array, int length_of_array_data, int length_of_array){
     
     // we call the derived class recv pong implementation
     return static_cast<T*>(this)->recv_pong(data_array, length_of_array_data, length_of_array);
@@ -2158,7 +2158,7 @@ inline int lock_client_crtp<T>::recv_pong(char* data_array, int length_of_array_
 }
 
 template <typename T>
-bool lock_client_crtp<T>::basic_read(){
+bool lock_http2_client_crtp<T>::basic_read(){
 
     if(!error){ // only continue if no error
         
@@ -4824,7 +4824,7 @@ bool lock_client_crtp<T>::basic_read(){
 }
 
 template <typename T>
-bool lock_client_crtp<T>::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a websocket connection by using the parameterless constructor, or to connect an already established websocket connection and lock client instance to a different websocket server, it can also be used to retry connecting an instance that encountered an error during connection
+bool lock_http2_client_crtp<T>::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a websocket connection by using the parameterless constructor, or to connect an already established websocket connection and lock client instance to a different websocket server, it can also be used to retry connecting an instance that encountered an error during connection
 
     if(client_state == CLOSED){
         
@@ -4893,7 +4893,7 @@ bool lock_client_crtp<T>::connect(std::string_view url){ // this is used to conn
             
                 if(c_url_new == NULL){
                     
-                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                     
                     error = true;
                     
@@ -4921,7 +4921,7 @@ bool lock_client_crtp<T>::connect(std::string_view url){ // this is used to conn
                 
                 if(c_url_new == NULL){
                     
-                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                     
                     error = true;
                     
@@ -5100,7 +5100,7 @@ bool lock_client_crtp<T>::connect(std::string_view url){ // this is used to conn
                     
                         if(c_path_new == NULL){
                         
-                            strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                             
                             error = true;
                             
@@ -5126,7 +5126,7 @@ bool lock_client_crtp<T>::connect(std::string_view url){ // this is used to conn
                     
                         if(c_path_new == NULL){
                         
-                            strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                             
                             error = true;
                             
@@ -5463,7 +5463,7 @@ bool lock_client_crtp<T>::connect(std::string_view url){ // this is used to conn
 }
 
 template <typename T>
-bool lock_client_crtp<T>::interface_connect(std::string_view url, in_addr* interface_address, char* interface_name){
+bool lock_http2_client_crtp<T>::interface_connect(std::string_view url, in_addr* interface_address, char* interface_name){
     
     if(client_state == CLOSED){
         
@@ -5528,7 +5528,7 @@ bool lock_client_crtp<T>::interface_connect(std::string_view url, in_addr* inter
             
                 if(c_url_new == NULL){
                     
-                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                     
                     error = true;
                     
@@ -5556,7 +5556,7 @@ bool lock_client_crtp<T>::interface_connect(std::string_view url, in_addr* inter
                 
                 if(c_url_new == NULL){
                     
-                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                     
                     error = true;
                     
@@ -5751,7 +5751,7 @@ bool lock_client_crtp<T>::interface_connect(std::string_view url, in_addr* inter
                             
                                 if(c_path_new == NULL){
                                 
-                                    strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                                     
                                     error = true;
                                     
@@ -5777,7 +5777,7 @@ bool lock_client_crtp<T>::interface_connect(std::string_view url, in_addr* inter
                             
                                 if(c_path_new == NULL){
                                 
-                                    strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                                     
                                     error = true;
                                     
@@ -6069,7 +6069,7 @@ bool lock_client_crtp<T>::interface_connect(std::string_view url, in_addr* inter
 }
 
 template <typename T>
-int lock_client_crtp<T>::connect_to_server(const char *hostname, const char *port, in_addr* interface_address, const char *interface_name){
+int lock_http2_client_crtp<T>::connect_to_server(const char *hostname, const char *port, in_addr* interface_address, const char *interface_name){
 
     struct addrinfo hints, *res = NULL, *p = NULL;
 
@@ -6158,7 +6158,7 @@ int lock_client_crtp<T>::connect_to_server(const char *hostname, const char *por
 }
 
 template <typename T>
-int lock_client_crtp<T>::reset(){
+int lock_http2_client_crtp<T>::reset(){
 
     if(!c_ssl) return 0;
 
@@ -6177,7 +6177,7 @@ int lock_client_crtp<T>::reset(){
 }
 
 template <typename T>
-void lock_client_crtp<T>::block_sigpipe_signal(){
+void lock_http2_client_crtp<T>::block_sigpipe_signal(){
 
     sigemptyset(&newset);
     sigemptyset(&oldset);
@@ -6187,7 +6187,7 @@ void lock_client_crtp<T>::block_sigpipe_signal(){
 }
 
 template <typename T>
-void lock_client_crtp<T>::unblock_sigpipe_signal(){
+void lock_http2_client_crtp<T>::unblock_sigpipe_signal(){
 
     // clear out any SIGPIPE signal that came in while we blocked it
     while(sigtimedwait(&newset, &si, &ts) >= 0 || errno != EAGAIN);
@@ -6199,7 +6199,7 @@ void lock_client_crtp<T>::unblock_sigpipe_signal(){
 }
 
 template <typename T>
-void lock_client_crtp<T>::fail_ws_connection(unsigned short status_code){
+void lock_http2_client_crtp<T>::fail_ws_connection(unsigned short status_code){
 
     if(cursor != NULL && data_array != NULL){
         
@@ -6272,7 +6272,7 @@ void lock_client_crtp<T>::fail_ws_connection(unsigned short status_code){
 }
 
 template <typename T>
-bool lock_client_crtp<T>::close(unsigned short status_code){ // this closes an established websocket connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same websocket server using the connect function
+bool lock_http2_client_crtp<T>::close(unsigned short status_code){ // this closes an established websocket connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same websocket server using the connect function
 
     if(!error){ // only continue if no error
         
@@ -6348,7 +6348,7 @@ bool lock_client_crtp<T>::close(unsigned short status_code){ // this closes an e
 
 // constructor with url string
 template <typename T>
-lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url){
+lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url){
 
     // initialisation of class wide variables
     if(!wolfssl_init){
@@ -6458,7 +6458,7 @@ lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url){
                     
                         if(c_url_new == NULL){
                             
-                            strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                             
                             error = true;
                             
@@ -6486,7 +6486,7 @@ lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url){
                         
                         if(c_url_new == NULL){
                             
-                            strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                             
                             error = true;
                             
@@ -6667,7 +6667,7 @@ lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url){
                         
                             if(c_path_new == NULL){
                             
-                                strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                                 
                                 error = true;
                                 
@@ -6693,7 +6693,7 @@ lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url){
                         
                             if(c_path_new == NULL){
                             
-                                strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                                 
                                 error = true;
                                 
@@ -7090,7 +7090,7 @@ lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url){
 
 // constructor that binds to a network interface
 template <typename T>
-lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url, in_addr* interface_address, char* interface_name){
+lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in_addr* interface_address, char* interface_name){
 
     // initialisation of class wide variables
     if(!wolfssl_init){
@@ -7194,7 +7194,7 @@ lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url, in_addr* inter
                 
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                         
                         error = true;
                         
@@ -7222,7 +7222,7 @@ lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url, in_addr* inter
                     
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                         
                         error = true;
                         
@@ -7706,7 +7706,7 @@ lock_client_nb_crtp<T>::lock_client_nb_crtp(std::string_view url, in_addr* inter
 
 // parameterless constructor
 template <typename T>
-lock_client_nb_crtp<T>::lock_client_nb_crtp(){
+lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(){
     
     // initialisation of class wide variables
     if(!wolfssl_init){
@@ -7770,7 +7770,7 @@ lock_client_nb_crtp<T>::lock_client_nb_crtp(){
 
 // destructor
 template <typename T>
-lock_client_nb_crtp<T>::~lock_client_nb_crtp(){
+lock_http2_client_nb_crtp<T>::~lock_http2_client_nb_crtp(){
     
     // close the websocket connection if any
     if(client_state == OPEN){
@@ -7827,21 +7827,21 @@ lock_client_nb_crtp<T>::~lock_client_nb_crtp(){
 }
 
 template <typename T>
-inline bool lock_client_nb_crtp<T>::status(){ // returns the error status of a lock_client instance
+inline bool lock_http2_client_nb_crtp<T>::status(){ // returns the error status of a lock_http2_client instance
     
     return error;
     
 }
 
 template <typename T>
-inline char* lock_client_nb_crtp<T>::get_error_message(){ // returns the error message: the reason why a lock_client instance's error flag is set
+inline char* lock_http2_client_nb_crtp<T>::get_error_message(){ // returns the error message: the reason why a lock_http2_client instance's error flag is set
     
     return error_buffer;
     
 }
 
 template <typename T>
-inline bool lock_client_nb_crtp<T>::is_open(){
+inline bool lock_http2_client_nb_crtp<T>::is_open(){
 
     if(client_state == OPEN)
         return true;
@@ -7851,7 +7851,7 @@ inline bool lock_client_nb_crtp<T>::is_open(){
 }
 
 template <typename T>
-bool lock_client_nb_crtp<T>::ping(){ // sends a ping on an established websocket connection
+bool lock_http2_client_nb_crtp<T>::ping(){ // sends a ping on an established websocket connection
     
     if(!error){ // only continue if no error
         
@@ -7945,7 +7945,7 @@ bool lock_client_nb_crtp<T>::ping(){ // sends a ping on an established websocket
 }
 
 template <typename T>
-bool lock_client_nb_crtp<T>::pong(int ping_data_len){ // sends out a pong frame unsolicited or in response to a received ping frame
+bool lock_http2_client_nb_crtp<T>::pong(int ping_data_len){ // sends out a pong frame unsolicited or in response to a received ping frame
     
     if(!error){ // only continue if no error
         
@@ -8059,7 +8059,7 @@ bool lock_client_nb_crtp<T>::pong(int ping_data_len){ // sends out a pong frame 
 }
 
 template <typename T>
-inline bool lock_client_nb_crtp<T>::set_ping_backlog(int backlog_num){
+inline bool lock_http2_client_nb_crtp<T>::set_ping_backlog(int backlog_num){
     
     if(!error){ // only continue if no error
         
@@ -8073,7 +8073,7 @@ inline bool lock_client_nb_crtp<T>::set_ping_backlog(int backlog_num){
 }
 
 template <typename T>
-inline bool lock_client_nb_crtp<T>::clear(){ // clear the error flag of a lock client in open state
+inline bool lock_http2_client_nb_crtp<T>::clear(){ // clear the error flag of a lock client in open state
 
     if(client_state == OPEN){
             
@@ -8088,7 +8088,7 @@ inline bool lock_client_nb_crtp<T>::clear(){ // clear the error flag of a lock c
 }
 
 template <typename T>
-bool lock_client_nb_crtp<T>::send(std::string_view payload_data){ // sends data passed as parameter along an established websocket connection
+bool lock_http2_client_nb_crtp<T>::send(std::string_view payload_data){ // sends data passed as parameter along an established websocket connection
 
     if(!error){ // only continue if no error
         
@@ -8706,7 +8706,7 @@ bool lock_client_nb_crtp<T>::send(std::string_view payload_data){ // sends data 
 }
 
 template <typename T>
-inline int lock_client_nb_crtp<T>::recv_data(char* data_array, int length_of_array_data, int length_of_array){
+inline int lock_http2_client_nb_crtp<T>::recv_data(char* data_array, int length_of_array_data, int length_of_array){
     
     // we call the derived class recv data implementation
     return static_cast<T*>(this)->recv_data(data_array, length_of_array_data, length_of_array);
@@ -8714,7 +8714,7 @@ inline int lock_client_nb_crtp<T>::recv_data(char* data_array, int length_of_arr
 }
 
 template <typename T>
-inline int lock_client_nb_crtp<T>::recv_pong(char* data_array, int length_of_array_data, int length_of_array){
+inline int lock_http2_client_nb_crtp<T>::recv_pong(char* data_array, int length_of_array_data, int length_of_array){
     
     // we call the derived class recv pong implementation
     return static_cast<T*>(this)->recv_pong(data_array, length_of_array_data, length_of_array);
@@ -8722,7 +8722,7 @@ inline int lock_client_nb_crtp<T>::recv_pong(char* data_array, int length_of_arr
 }
 
 template <typename T>
-bool lock_client_nb_crtp<T>::basic_read(){
+bool lock_http2_client_nb_crtp<T>::basic_read(){
 
     if(!error){ // only continue if no error
         
@@ -11455,7 +11455,7 @@ bool lock_client_nb_crtp<T>::basic_read(){
 }
 
 template <typename T>
-bool lock_client_nb_crtp<T>::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a websocket connection by using the parameterless constructor, or to connect an already established websocket connection and lock client instance to a different websocket server, it can also be used to retry connecting an instance that encountered an error during connection
+bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a websocket connection by using the parameterless constructor, or to connect an already established websocket connection and lock client instance to a different websocket server, it can also be used to retry connecting an instance that encountered an error during connection
     
     if(client_state == CLOSED){
         
@@ -11526,7 +11526,7 @@ bool lock_client_nb_crtp<T>::connect(std::string_view url){ // this is used to c
                 
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                         
                         error = true;
                         
@@ -11554,7 +11554,7 @@ bool lock_client_nb_crtp<T>::connect(std::string_view url){ // this is used to c
                     
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                         
                         error = true;
                         
@@ -11735,7 +11735,7 @@ bool lock_client_nb_crtp<T>::connect(std::string_view url){ // this is used to c
                     
                         if(c_path_new == NULL){
                         
-                            strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                             
                             error = true;
                             
@@ -11761,7 +11761,7 @@ bool lock_client_nb_crtp<T>::connect(std::string_view url){ // this is used to c
                     
                         if(c_path_new == NULL){
                         
-                            strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
                             
                             error = true;
                             
@@ -12157,7 +12157,7 @@ bool lock_client_nb_crtp<T>::connect(std::string_view url){ // this is used to c
 }
 
 template <typename T>
-bool lock_client_nb_crtp<T>::interface_connect(std::string_view url, in_addr* interface_address, char* interface_name){
+bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_addr* interface_address, char* interface_name){
     
     if(client_state == CLOSED){
         
@@ -12222,7 +12222,7 @@ bool lock_client_nb_crtp<T>::interface_connect(std::string_view url, in_addr* in
             
                 if(c_url_new == NULL){
                     
-                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                     
                     error = true;
                     
@@ -12250,7 +12250,7 @@ bool lock_client_nb_crtp<T>::interface_connect(std::string_view url, in_addr* in
                 
                 if(c_url_new == NULL){
                     
-                    strncpy(error_buffer, "Error allocating heap memory for lock_client url parameter ", error_buffer_array_length);
+                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                     
                     error = true;
                     
@@ -12733,7 +12733,7 @@ bool lock_client_nb_crtp<T>::interface_connect(std::string_view url, in_addr* in
 }
 
 template <typename T>
-int lock_client_nb_crtp<T>::connect_to_server(const char *hostname, const char *port, in_addr* interface_address, const char *interface_name){
+int lock_http2_client_nb_crtp<T>::connect_to_server(const char *hostname, const char *port, in_addr* interface_address, const char *interface_name){
 
     struct addrinfo hints, *res = NULL, *p = NULL;
 
@@ -12827,7 +12827,7 @@ int lock_client_nb_crtp<T>::connect_to_server(const char *hostname, const char *
 }
 
 template <typename T>
-int lock_client_nb_crtp<T>::reset(){
+int lock_http2_client_nb_crtp<T>::reset(){
 
     if(!c_ssl) return 0;
 
@@ -12846,7 +12846,7 @@ int lock_client_nb_crtp<T>::reset(){
 }
 
 template <typename T>
-void lock_client_nb_crtp<T>::block_sigpipe_signal(){
+void lock_http2_client_nb_crtp<T>::block_sigpipe_signal(){
 
     sigemptyset(&newset);
     sigemptyset(&oldset);
@@ -12856,7 +12856,7 @@ void lock_client_nb_crtp<T>::block_sigpipe_signal(){
 }
 
 template <typename T>
-void lock_client_nb_crtp<T>::unblock_sigpipe_signal(){
+void lock_http2_client_nb_crtp<T>::unblock_sigpipe_signal(){
 
     // clear out any SIGPIPE signal that came in while we blocked it
     while(sigtimedwait(&newset, &si, &ts) >= 0 || errno != EAGAIN);
@@ -12868,7 +12868,7 @@ void lock_client_nb_crtp<T>::unblock_sigpipe_signal(){
 }
 
 template <typename T>
-void lock_client_nb_crtp<T>::fail_ws_connection(unsigned short status_code){
+void lock_http2_client_nb_crtp<T>::fail_ws_connection(unsigned short status_code){
 
     if(cursor != NULL && data_array != NULL){
         
@@ -12940,7 +12940,7 @@ void lock_client_nb_crtp<T>::fail_ws_connection(unsigned short status_code){
 }
 
 template <typename T>
-bool lock_client_nb_crtp<T>::close(unsigned short status_code){ // this closes an established websocket connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same websocket server using the connect function
+bool lock_http2_client_nb_crtp<T>::close(unsigned short status_code){ // this closes an established websocket connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same websocket server using the connect function
 
     if(!error){ // only continue if no error
         

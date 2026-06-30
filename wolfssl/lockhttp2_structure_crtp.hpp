@@ -1,15 +1,15 @@
 template <typename T>
-class lock_client_crtp {
+class lock_http2_client_crtp {
 
 public:
     
     //constructors
-    lock_client_crtp(std::string_view url);
-    lock_client_crtp(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
-    lock_client_crtp(); // parameterless constructor
+    lock_http2_client_crtp(std::string_view url);
+    lock_http2_client_crtp(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
+    lock_http2_client_crtp(); // parameterless constructor
     
     // destructor
-    ~lock_client_crtp();
+    ~lock_http2_client_crtp();
 
 public:
     
@@ -19,8 +19,8 @@ public:
     bool send(std::string_view); //send function
     bool connect(std::string_view); // function to connect to a url
     bool interface_connect(std::string_view url, in_addr* interface_address, char* interface_name); // connect function that binds to a particular interface before connection
-    bool close(unsigned short status_code = NORMAL_CLOSE); // closes an open connection of a lock_client_crtp instance
-    bool status(); // checks the error status of a lock_client_crtp instance
+    bool close(unsigned short status_code = NORMAL_CLOSE); // closes an open connection of a lock_http2_client_crtp instance
+    bool status(); // checks the error status of a lock_http2_client_crtp instance
     bool is_open();
     char* get_error_message();
     bool basic_read();
@@ -176,7 +176,7 @@ protected:
 protected:
 
     static const int mask_array_len = 4; // used to create an array for storing the data mask
-    inline static unsigned char mask[mask_array_len] = {'\0'}; // array to store the send data mask - it is defined to be inline and static because to increase performance the library generates a mask just once when the class is first instantiated and every subsequent lock_client_crtp object reuses that same mask to send out every masked frame
+    inline static unsigned char mask[mask_array_len] = {'\0'}; // array to store the send data mask - it is defined to be inline and static because to increase performance the library generates a mask just once when the class is first instantiated and every subsequent lock_http2_client_crtp object reuses that same mask to send out every masked frame
    
 // instance variables for sending data
 protected:
@@ -204,24 +204,24 @@ protected:
 // instance variables for handling ping backlogs
 protected:
     
-    int ping_backlog = 0; // this variable sets the number of ping the lock_client_crtp instance would receive before sending out a pong response
+    int ping_backlog = 0; // this variable sets the number of ping the lock_http2_client_crtp instance would receive before sending out a pong response
     int num_of_pings_received = 0;
     
 };
 
 // non blocking lock client
 template <typename T>
-class lock_client_nb_crtp {
+class lock_http2_client_nb_crtp {
     
 public:
     
     //constructors
-    lock_client_nb_crtp(std::string_view url);
-    lock_client_nb_crtp(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
-    lock_client_nb_crtp(); // parameterless constructor
+    lock_http2_client_nb_crtp(std::string_view url);
+    lock_http2_client_nb_crtp(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
+    lock_http2_client_nb_crtp(); // parameterless constructor
     
     // destructor
-    ~lock_client_nb_crtp();
+    ~lock_http2_client_nb_crtp();
 
 public:
     
@@ -231,8 +231,8 @@ public:
     bool send(std::string_view); //send function
     bool connect(std::string_view); // function to connect to a url
     bool interface_connect(std::string_view url, in_addr* interface_address, char* interface_name); // connect function that binds to a particular interface before connection
-    bool close(unsigned short status_code = NORMAL_CLOSE); // closes an open connection of a lock_client_crtp instance
-    bool status(); // checks the error status of a lock_client_crtp instance
+    bool close(unsigned short status_code = NORMAL_CLOSE); // closes an open connection of a lock_http2_client_crtp instance
+    bool status(); // checks the error status of a lock_http2_client_crtp instance
     bool is_open();
     char* get_error_message();
     bool basic_read();
@@ -388,7 +388,7 @@ protected:
 protected:
 
     static const int mask_array_len = 4; // used to create an array for storing the data mask
-    inline static unsigned char mask[mask_array_len] = {'\0'}; // array to store the send data mask - it is defined to be inline and static because to increase performance the library generates a mask just once when the class is first instantiated and every subsequent lock_client_crtp object reuses that same mask to send out every masked frame
+    inline static unsigned char mask[mask_array_len] = {'\0'}; // array to store the send data mask - it is defined to be inline and static because to increase performance the library generates a mask just once when the class is first instantiated and every subsequent lock_http2_client_crtp object reuses that same mask to send out every masked frame
    
 // instance variables for sending data
 protected:
@@ -416,7 +416,7 @@ protected:
 // instance variables for handling ping backlogs
 protected:
     
-    int ping_backlog = 0; // this variable sets the number of ping the lock_client_crtp instance would receive before sending out a pong response
+    int ping_backlog = 0; // this variable sets the number of ping the lock_http2_client_crtp instance would receive before sending out a pong response
     int num_of_pings_received = 0;
     
 };

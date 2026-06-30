@@ -1,16 +1,16 @@
 using lock_function = std::function<int(char*, int, int)>;
 
-class lock_client {
+class lock_http2_client {
 
 public:
     
     //constructors
-    lock_client(std::string_view url);
-    lock_client(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
-    lock_client(); // parameterless constructor
+    lock_http2_client(std::string_view url);
+    lock_http2_client(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
+    lock_http2_client(); // parameterless constructor
     
     // destructor
-    ~lock_client();
+    ~lock_http2_client();
 
 public:
     
@@ -20,8 +20,8 @@ public:
     bool send(std::string_view); //send function
     bool connect(std::string_view); // function to connect to a url
     bool interface_connect(std::string_view url, in_addr* interface_address, char* interface_name); // connect function that binds to a particular interface before connection
-    bool close(unsigned short status_code = NORMAL_CLOSE); // closes an open connection of a lock_client instance
-    bool status(); // checks the error status of a lock_client instance
+    bool close(unsigned short status_code = NORMAL_CLOSE); // closes an open connection of a lock_http2_client instance
+    bool status(); // checks the error status of a lock_http2_client instance
     bool is_open();
     char* get_error_message();
     bool basic_read();
@@ -36,10 +36,10 @@ private:
 // pointers to receive functions
     
     // receive function pointer
-    lock_function recv_data = lock_client::default_receive;
+    lock_function recv_data = lock_http2_client::default_receive;
     
     // receive pong function pointer
-    lock_function recv_pong = lock_client::default_pong_receive;
+    lock_function recv_pong = lock_http2_client::default_pong_receive;
     
 // private class functions
 private:
@@ -181,7 +181,7 @@ private:
 private:
 
     static const int mask_array_len = 4; // used to create an array for storing the data mask
-    inline static unsigned char mask[mask_array_len] = {'\0'}; // array to store the send data mask - it is defined to be inline and static because to increase performance the library generates a mask just once when the class is first instantiated and every subsequent lock_client object reuses that same mask to send out every masked frame
+    inline static unsigned char mask[mask_array_len] = {'\0'}; // array to store the send data mask - it is defined to be inline and static because to increase performance the library generates a mask just once when the class is first instantiated and every subsequent lock_http2_client object reuses that same mask to send out every masked frame
    
 // instance variables for sending data
 private:
@@ -209,23 +209,23 @@ private:
 // instance variables for handling ping backlogs
 private:
     
-    int ping_backlog = 0; // this variable sets the number of ping the lock_client instance would receive before sending out a pong response
+    int ping_backlog = 0; // this variable sets the number of ping the lock_http2_client instance would receive before sending out a pong response
     int num_of_pings_received = 0;
     
 };
 
 // non blocking lock client
-class lock_client_nb {
+class lock_http2_client_nb {
     
 public:
     
     //constructors
-    lock_client_nb(std::string_view url);
-    lock_client_nb(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
-    lock_client_nb(); // parameterless constructor
+    lock_http2_client_nb(std::string_view url);
+    lock_http2_client_nb(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
+    lock_http2_client_nb(); // parameterless constructor
     
     // destructor
-    ~lock_client_nb();
+    ~lock_http2_client_nb();
 
 public:
     
@@ -235,8 +235,8 @@ public:
     bool send(std::string_view); //send function
     bool connect(std::string_view); // function to connect to a url
     bool interface_connect(std::string_view url, in_addr* interface_address, char* interface_name); // connect function that binds to a particular interface before connection
-    bool close(unsigned short status_code = NORMAL_CLOSE); // closes an open connection of a lock_client instance
-    bool status(); // checks the error status of a lock_client instance
+    bool close(unsigned short status_code = NORMAL_CLOSE); // closes an open connection of a lock_http2_client instance
+    bool status(); // checks the error status of a lock_http2_client instance
     bool is_open();
     char* get_error_message();
     bool basic_read();
@@ -251,10 +251,10 @@ private:
 // pointers to receive functions
     
     // receive function pointer
-    lock_function recv_data = lock_client::default_receive;
+    lock_function recv_data = lock_http2_client::default_receive;
     
     // receive pong function pointer
-    lock_function recv_pong = lock_client::default_pong_receive;
+    lock_function recv_pong = lock_http2_client::default_pong_receive;
     
 // private class functions
 private:
@@ -396,7 +396,7 @@ private:
 private:
 
     static const int mask_array_len = 4; // used to create an array for storing the data mask
-    inline static unsigned char mask[mask_array_len] = {'\0'}; // array to store the send data mask - it is defined to be inline and static because to increase performance the library generates a mask just once when the class is first instantiated and every subsequent lock_client object reuses that same mask to send out every masked frame
+    inline static unsigned char mask[mask_array_len] = {'\0'}; // array to store the send data mask - it is defined to be inline and static because to increase performance the library generates a mask just once when the class is first instantiated and every subsequent lock_http2_client object reuses that same mask to send out every masked frame
    
 // instance variables for sending data
 private:
@@ -424,7 +424,7 @@ private:
 // instance variables for handling ping backlogs
 private:
     
-    int ping_backlog = 0; // this variable sets the number of ping the lock_client instance would receive before sending out a pong response
+    int ping_backlog = 0; // this variable sets the number of ping the lock_http2_client instance would receive before sending out a pong response
     int num_of_pings_received = 0;
     
 };
