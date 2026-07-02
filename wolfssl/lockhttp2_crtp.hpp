@@ -1602,7 +1602,7 @@ int lock_http2_client_nb_crtp<T>::connect_to_server(const char *hostname, const 
             perror("setsockopt(SO_BINDTODEVICE)");
             strncpy(error_buffer, "Error binding socket to device", error_buffer_array_length);          
             error = true;
-            close(sock);
+            ::close(sock);
             return -1;
         }
         else{
@@ -1652,7 +1652,7 @@ int lock_http2_client_nb_crtp<T>::connect_to_server(const char *hostname, const 
         }
 
         perror("connect");
-        close(sock);
+        ::close(sock);
         sock = -1;
     }
 
@@ -1715,7 +1715,7 @@ void lock_http2_client_nb_crtp<T>::unblock_sigpipe_signal(){
 }
 
 template <typename T>
-bool lock_http2_client_nb_crtp<T>::close(unsigned short status_code){ // this closes an established http connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same http server using the connect function
+bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established http connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same http server using the connect function
 
     if(!error){ // only continue if no error
                 

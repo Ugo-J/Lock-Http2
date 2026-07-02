@@ -20,7 +20,7 @@ public:
     bool send(std::string_view); //send function
     bool connect(std::string_view); // function to connect to a url
     bool interface_connect(std::string_view url, in_addr* interface_address, char* interface_name); // connect function that binds to a particular interface before connection
-    bool close(unsigned short status_code = NORMAL_CLOSE); // closes an open connection of a lock_http2_client instance
+    bool close(); // closes an open connection of a lock_http2_client instance
     bool status(); // checks the error status of a lock_http2_client instance
     bool is_open();
     char* get_error_message();
@@ -88,6 +88,7 @@ private:
 private:
         
    WOLFSSL* c_ssl = NULL; // defines the ssl object that is used to set instance-specific wolfssl options
+   nghttp2_session* session; // nghttp2 session object pointer
 
 // lock client states
 private: 

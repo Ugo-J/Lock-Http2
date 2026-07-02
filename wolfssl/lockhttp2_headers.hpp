@@ -4,6 +4,7 @@
 #include <wolfssl/wolfcrypt/coding.h>
 #include <wolfssl/wolfcrypt/sha.h>
 #include <wolfssl/wolfcrypt/memory.h>
+#include <nghttp2/nghttp2.h>
 #include <signal.h>
 #include <cstring>
 #include <chrono>

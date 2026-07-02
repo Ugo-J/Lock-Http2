@@ -1,6 +1,7 @@
 #include <iostream>
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
+#include <nghttp2/nghttp2.h>
 #include <signal.h>
 #include <cstring>
 #include <chrono>

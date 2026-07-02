@@ -599,7 +599,7 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
                     BIO* sock_bio = BIO_new_socket(sock, BIO_NOCLOSE);
                     if (!sock_bio) {
                         SSL_free(c_ssl);
-                        close(sock);
+                        ::close(sock);
                         strncpy(error_buffer, "Error creating BIO structure from socket", error_buffer_array_length);          
                         error = true;
                     }
@@ -1742,7 +1742,7 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
                     BIO* sock_bio = BIO_new_socket(sock, BIO_NOCLOSE);
                     if (!sock_bio) {
                         SSL_free(c_ssl);
-                        close(sock);
+                        ::close(sock);
                         strncpy(error_buffer, "Error creating BIO structure from socket", error_buffer_array_length);          
                         error = true;
                     }
@@ -2131,7 +2131,7 @@ int lock_http2_client_nb_crtp<T>::connect_to_server(const char *hostname, const 
         perror("setsockopt(SO_BINDTODEVICE)");
         strncpy(error_buffer, "Error binding socket to device", error_buffer_array_length);          
         error = true;
-        close(sock);
+        ::close(sock);
         return -1;
     }
     else{
@@ -2174,7 +2174,7 @@ int lock_http2_client_nb_crtp<T>::connect_to_server(const char *hostname, const 
         }
 
         perror("connect");
-        close(sock);
+        ::close(sock);
         sock = -1;
     }
 
@@ -2218,7 +2218,7 @@ void lock_http2_client_nb_crtp<T>::unblock_sigpipe_signal(){
 }
 
 template <typename T>
-bool lock_http2_client_nb_crtp<T>::close(unsigned short status_code){ // this closes an established websocket connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same websocket server using the connect function
+bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established websocket connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same websocket server using the connect function
 
     if(!error){ // only continue if no error
    
