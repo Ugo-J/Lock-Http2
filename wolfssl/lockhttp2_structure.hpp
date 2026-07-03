@@ -33,7 +33,7 @@ private:
 // pointers to receive functions
     
     // receive function pointer
-    lock_function recv_data = lock_http2_client::default_receive;
+    lock_function recv_data = lock_http2_client_nb::default_receive;
     
 // private class functions
 private:

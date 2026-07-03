@@ -383,6 +383,9 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url){
                             // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
                             wolfSSL_set_fd(c_ssl, sockfd);
 
+                            // we set the application layer protocol for our ssl object to http2
+                            wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
+
                             // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
                             int len;
 
@@ -676,6 +679,9 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
                     // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
                     wolfSSL_set_fd(c_ssl, sockfd);
 
+                    // we set the application layer protocol for our ssl object to http2
+                    wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
+
                     // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
                     int len;
 
@@ -763,9 +769,6 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(){
 
         // load the general memory pool
         wolfSSL_CTX_load_static_memory(&ssl_ctx, NULL, general_memory_pool, CRYPTO_ARENA_SIZE, WOLFMEM_GENERAL, 1);
-
-        // we set the application layer protocol for our ssl ctx to http2
-        wolfSSL_CTX_set_alpn_protos(ssl_ctx, (const unsigned char *)"\x02h2", 3);
 
     }
     
@@ -1263,6 +1266,9 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
                         // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
                         wolfSSL_set_fd(c_ssl, sockfd);
 
+                        // we set the application layer protocol for our ssl object to http2
+                        wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
+
                         // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
                         int len;
 
@@ -1534,6 +1540,9 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
 
                 // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
                 wolfSSL_set_fd(c_ssl, sockfd);
+
+                // we set the application layer protocol for our ssl object to http2
+                wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
 
                 // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
                 int len;
