@@ -817,8 +817,11 @@ lock_http2_client_nb::lock_http2_client_nb(){
                 // continue if no error
                 if(!error){
 
-                    // we submit our initial local settings. since this is a basic client, an empty settings array is fine, the library fills in standard defaults.
-                    rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, nullptr, 0);
+                    // we declare our nghttp2 settings struct and set our max concurrent streams in it
+                    nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+                    // we submit our settings
+                    rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
 
                     if(rv != 0){
 
@@ -895,23 +898,96 @@ lock_http2_client_nb::~lock_http2_client_nb(){
 
 int lock_http2_client_nb::on_frame_recv_cb(nghttp2_session *session, const nghttp2_frame *frame, void *user_data){
 
-    return 0;
+    lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
+    return client->handle_frame_recv(frame);
 }
 
 int lock_http2_client_nb::on_data_chunk_recv_cb(nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_data){
 
-    return 0;
+    lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
+    return client->handle_data_chunk(flags, stream_id, data, len);
 
 }
 
 int lock_http2_client_nb::on_stream_close_cb(nghttp2_session *session, int32_t stream_id, uint32_t error_code, void *user_data){
 
-    return 0;
-
+    lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
+    return client->handle_stream_close(stream_id, error_code);
 }
 
 int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data){
 
+    lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
+    return client->handle_header(frame, name, namelen, value, valuelen, flags);
+
+}
+
+int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
+
+    // we use this switch case to handle different header types
+    switch(frame->hd.type){
+
+        case NGHTTP2_HEADERS:
+
+            if(frame->hd.flags & NGHTTP2_FLAG_END_STREAM){
+
+                std::cout<<"[Stream "<<frame->hd.stream_id<<"] Response finished (Headers only).\n";
+            }
+
+            break;
+
+        case NGHTTP2_SETTINGS:
+
+            std::cout<<"SETTINGS frame received from server.\n";
+            break;
+
+        case NGHTTP2_PING:
+
+            std::cout<<"PING frame received from server.\n";
+            break;
+
+    }
+
+    return 0;
+}
+
+int lock_http2_client_nb::handle_header(const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags){
+
+    if(frame->hd.type == NGHTTP2_HEADERS){
+
+        std::string_view key(reinterpret_cast<const char*>(name), namelen);
+        std::string_view val(reinterpret_cast<const char*>(value), valuelen);
+        
+        std::cout<<"[Stream "<<frame->hd.stream_id<<"] Header -> "<<key<<": "<<val<<"\n";
+        
+    }
+
+    return 0;
+
+}
+
+int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len){
+
+    std::string_view chunk(reinterpret_cast<const char*>(data), len);
+    
+    std::cout<<"[Stream "<<stream_id<<"] Received "<<len<<" bytes of data.\n";
+    
+    return 0;
+
+}
+
+int lock_http2_client_nb::handle_stream_close(int32_t stream_id, uint32_t error_code){
+
+    if(error_code == NGHTTP2_NO_ERROR){
+
+        std::cout<<"[Stream "<<stream_id<<"] Closed successfully.\n";
+
+    }
+    else{
+
+        std::cout<<"[Stream "<<stream_id<<"] Closed with error code: "<<error_code<<"\n";
+    }
+    
     return 0;
 
 }

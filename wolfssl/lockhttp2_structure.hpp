@@ -44,7 +44,7 @@ private:
     int reset(); // function to reset a wolfssl session and disconnect the underlying connection
 
 // nghttp2 callback functions
-protected:
+private:
 
     // on frame receive call back function
     static int on_frame_recv_cb(nghttp2_session *session, const nghttp2_frame *frame, void *user_data);
@@ -57,6 +57,14 @@ protected:
 
     // on header callback
     static int on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data);
+
+// data handling functions - these are the functions the nghttp2 callbacks call
+private:
+
+    int handle_frame_recv(const nghttp2_frame *frame);
+    int handle_header(const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags);
+    int handle_data_chunk(uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len);
+    int handle_stream_close(int32_t stream_id, uint32_t error_code);
 
 // private signal handling variables
 private: 
@@ -104,6 +112,7 @@ private:
         
    WOLFSSL* c_ssl = NULL; // defines the ssl object that is used to set instance-specific wolfssl options
    nghttp2_session* session; // nghttp2 session object pointer
+   static constexpr unsigned int MAX_CONCURRENT_STREAMS = 100; // this holds the max number of streams each lockhttp2 client can hold. a stream is essentially a request to a server pending a response, so the max concurrent streams is essentially the number of unresponded streams we can have on this handle
 
 // lock client states
 private: 
