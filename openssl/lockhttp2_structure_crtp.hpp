@@ -39,6 +39,21 @@ protected:
     void unblock_sigpipe_signal(); // function to unblock sigpipe signals after any write or read
     int connect_to_server(const char *hostname, const char *port, in_addr* interface_address, const char *interface_name); // function to connect to server when we manually configure the socket
 
+// nghttp2 callback functions
+protected:
+
+    // on frame receive call back function
+    int on_frame_recv_cb(nghttp2_session *session, const nghttp2_frame *frame, void *user_data);
+
+    // on data chunk receive callback
+    int on_data_chunk_recv_cb(nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_data);
+
+    // on stream close callback
+    int on_stream_close_cb(nghttp2_session *session, int32_t stream_id, uint32_t error_code, void *user_data);
+
+    // on header callback
+    int on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data);
+
 // protected signal handling variables
 protected: 
     

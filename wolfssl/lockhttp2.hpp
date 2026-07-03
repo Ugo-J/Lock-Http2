@@ -768,6 +768,77 @@ lock_http2_client_nb::lock_http2_client_nb(){
         // load the general memory pool
         wolfSSL_CTX_load_static_memory(&ssl_ctx, NULL, general_memory_pool, CRYPTO_ARENA_SIZE, WOLFMEM_GENERAL, 1);
 
+        // NGHTTP2 INITIALISATION
+
+        // continue if no error
+        if(!error){
+
+            // we set our nghttp2 callbacks
+
+            nghttp2_session_callbacks *callbacks = nullptr;
+
+            // we initialise our local callback function
+            int rv = nghttp2_session_callbacks_new(&callbacks);
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+                error = true;
+
+            }
+
+            // continue if no error
+            if(!error){
+
+                // Register our callbacks
+                nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+                nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+                nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+                nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+                // now we initialise our session client
+                rv = nghttp2_session_client_new(&session, callbacks, this);
+
+                // our callbacks are copied internally into our session object so we delete the callback pointer here
+                nghttp2_session_callbacks_del(callbacks);
+
+                if(rv != 0){
+                    
+                    strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+                    // we concatenate the nghttp2 specific error
+                    strcat(error_buffer, nghttp2_strerror(rv));
+                
+                    error = true;
+
+                }
+
+                // continue if no error
+                if(!error){
+
+                    // we submit our initial local settings. since this is a basic client, an empty settings array is fine, the library fills in standard defaults.
+                    rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, nullptr, 0);
+
+                    if(rv != 0){
+
+                        strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                        // we concatenate the nghttp2 specific error
+                        strcat(error_buffer, nghttp2_strerror(rv));
+                    
+                        error = true;
+
+                    }
+                    
+                    // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+                }
+
+            }
+
+        }
+
     }
     
 }
@@ -820,6 +891,29 @@ lock_http2_client_nb::~lock_http2_client_nb(){
         
     }
     
+}
+
+int lock_http2_client_nb::on_frame_recv_cb(nghttp2_session *session, const nghttp2_frame *frame, void *user_data){
+
+    return 0;
+}
+
+int lock_http2_client_nb::on_data_chunk_recv_cb(nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_data){
+
+    return 0;
+
+}
+
+int lock_http2_client_nb::on_stream_close_cb(nghttp2_session *session, int32_t stream_id, uint32_t error_code, void *user_data){
+
+    return 0;
+
+}
+
+int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data){
+
+    return 0;
+
 }
 
 inline bool lock_http2_client_nb::status(){ // returns the error status of a lock_http2_client instance
