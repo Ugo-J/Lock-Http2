@@ -734,6 +734,9 @@ lock_http2_client_nb::lock_http2_client_nb(){
     
     // initialise ssl ctx
     SSL_CTX_new(TLS_client_method());
+
+    // we set the application layer protocol for our ssl ctx to http2
+    SSL_CTX_set_alpn_protos(ssl_ctx, (const unsigned char *)"\x02h2", 3);
     
 }
 

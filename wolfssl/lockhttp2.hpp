@@ -762,6 +762,9 @@ lock_http2_client_nb::lock_http2_client_nb(){
         // load the general memory pool
         wolfSSL_CTX_load_static_memory(&ssl_ctx, NULL, general_memory_pool, CRYPTO_ARENA_SIZE, WOLFMEM_GENERAL, 1);
 
+        // we set the application layer protocol for our ssl ctx to http2
+        wolfSSL_CTX_set_alpn_protos(ssl_ctx, (const unsigned char *)"\x02h2", 3);
+
     }
     
 }
