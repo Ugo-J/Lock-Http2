@@ -58,6 +58,9 @@ private:
     // on header callback
     static int on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data);
 
+    // send body provider callback - this function is called when nghttp2 needs more data to send
+    static long send_body_provider_cb(nghttp2_session *session, int32_t stream_id, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void *user_data);
+
 // data handling functions - these are the functions the nghttp2 callbacks call
 private:
 

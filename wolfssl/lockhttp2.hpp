@@ -711,6 +711,85 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
                 
                     if(!error){ // only continue if no error
                 
+                        // we fetch the path for this connection
+
+                        // we check if a forward slash was found after the last colon, if none was we connect to the default root path else the forward slash till the end of the url string is the path
+                        std::string_view path = (base_url_end_index != std::string_view::npos) ? url.substr(base_url_end_index) : "/";
+
+                        // copy the channel path parameter into the channel path array
+                        int path_string_len = path.size();
+                        
+                        if(path_string_len < path_static_array_length){ // we can store the path in the static array if this condition is true
+                            
+                            path.copy(c_path_static, path_string_len); // copy the path into the static array
+                            c_path_static[path_string_len] = '\0'; // null-terminate the array
+                            
+                            c_path = c_path_static;
+                            
+                        }
+                        else if(path_string_len < size_of_allocated_path_memory){ // allocated memory is large enough
+                            
+                            path.copy(c_path_new, path_string_len); // copy the path into the allocated array
+                            c_path_new[path_string_len] = '\0'; // null-terminate the array
+                            
+                            c_path = c_path_new;
+                            
+                        }
+                        else{ // neither static or already allocated memory is large enough, we test the two possible cases 
+                            
+                            if(c_path_new == NULL){ //memory has not been allocated yet
+                            
+                                c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
+                            
+                                if(c_path_new == NULL){
+                                
+                                    strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                    
+                                    error = true;
+                                    
+                                }
+                                else{ 
+                                    
+                                    size_of_allocated_path_memory = path_string_len + 1;
+                                    
+                                    path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
+                            
+                                    c_path_new[path_string_len] = '\0'; // null-terminate the array
+                            
+                                    c_path = c_path_new;
+                            
+                                }
+                                
+                            }
+                            else{ // memory has been allocated but is still not sufficient
+                                
+                                delete [] c_path_new; // delete already allocated memory
+                                
+                                c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
+                            
+                                if(c_path_new == NULL){
+                                
+                                    strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                    
+                                    error = true;
+                                    
+                                }
+                                else{ 
+                                    
+                                    size_of_allocated_path_memory = path_string_len + 1;
+                                    
+                                    path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
+                            
+                                    c_path_new[path_string_len] = '\0'; // null-terminate the array
+                            
+                                    c_path = c_path_new;
+                            
+                                }
+                                
+                            }
+                            
+                        }
+
                     }
                 
                 }
@@ -915,6 +994,37 @@ int lock_http2_client_nb::on_stream_close_cb(nghttp2_session *session, int32_t s
     return client->handle_stream_close(stream_id, error_code);
 }
 
+long lock_http2_client_nb::send_body_provider_cb(nghttp2_session *session, int32_t stream_id, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void *user_data){
+
+    const char* data_start = static_cast<const char*>(source->ptr);
+    int& remaining_bytes = source->fd; // we use fd to keep track of how much data we still have to send
+
+    if(remaining_bytes == 0){
+
+        *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+        return 0;
+
+    }
+
+    // we copy our data into the nghttp2 internal buffer denoted by buf, the supplied length parameter holds the array size of the nghttp internal buffer so it is the max amount of data we can copy into that buffer
+    size_t to_copy = std::min(length, static_cast<size_t>(remaining_bytes));
+    std::memcpy(buf, data_start, to_copy);
+    
+    // we increment our source ptr so we start copying from the next unsent byte when next this callback is called
+    source->ptr = const_cast<char*>(data_start + to_copy);
+
+    // we decrement our remaining bytes which is a reference to source->fd
+    remaining_bytes -= to_copy;
+
+    if(remaining_bytes == 0){
+
+        *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+
+    }
+
+    return static_cast<long>(to_copy);
+}
+
 int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data){
 
     lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
@@ -1039,6 +1149,120 @@ bool lock_http2_client_nb::send(std::string_view payload_data){ // sends data pa
 
     if(!error){ // only continue if no error
     
+        // we construct our http headers
+        nghttp2_nv hdrs[] = {
+        { (uint8_t*)":method", (uint8_t*)"POST", 7, 4, NGHTTP2_NV_FLAG_NONE },
+        { (uint8_t*)":scheme", (uint8_t*)"https", 7, 5, NGHTTP2_NV_FLAG_NONE },
+        { (uint8_t*)":path", (uint8_t*)c_path, 5, strlen(c_path), NGHTTP2_NV_FLAG_NONE },
+        { (uint8_t*)":authority", (uint8_t*)c_host, 10, strlen(c_host), NGHTTP2_NV_FLAG_NONE }
+        };
+
+        // we setup ad initialise our data provider
+        nghttp2_data_provider2 provider;
+        provider.source.ptr = const_cast<char*>(payload_data.data());
+        provider.source.fd = payload_data.size(); // we store our payload data size
+        provider.read_callback = send_body_provider_cb;
+
+        // we submit our request and fetch the stream_id
+        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, std::size(hdrs), &provider, nullptr);
+
+        if(stream_id < 0){
+
+            strcpy(error_buffer, "Failed to submit request to session context: ");
+
+            // we concatenate the nghttp2 specific error
+            strcat(error_buffer, nghttp2_strerror(stream_id));
+        
+            error = true;
+
+        }
+
+        // continue if on error
+        if(!error){
+
+            // we serialise and send out our request in this loop
+            while(true){
+
+                // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
+                uint8_t* data_ptr = nullptr;
+
+                // we call session mem send2 to serialise our data, this function calls our data provider callback which copies our supplied data to the ession's intrnal buffers
+                ssize_t pending_bytes = nghttp2_session_mem_send2(session, const_cast<const uint8_t**>(&data_ptr));
+                
+                if(pending_bytes < 0){
+
+                    strcpy(error_buffer, "nghttp2 engine serialization error: ");
+
+                    // we concatenate the nghttp2 specific error
+                    strcat(error_buffer, nghttp2_strerror(pending_bytes));
+                
+                    error = true;
+
+                    break;
+                        
+                }
+            
+                if(pending_bytes == 0){
+
+                    break; // no more frames left to build for this transmission block so we break out of our serialisation loop
+                    
+                }
+
+                // block SIGPIPE signal before attempting to send data, just incase the connection is closed
+                block_sigpipe_signal();
+                
+                int64_t len = 0;
+
+                // keep polling till we have sent the entire frame
+                while(len < pending_bytes){
+
+                    int64_t local_len = wolfSSL_write(c_ssl, data_ptr, pending_bytes - len);
+
+                    if(local_len > 0){
+
+                        len += local_len;
+                                
+                        data_ptr += local_len;
+
+                    }
+                    else{
+
+                        // we get the error message
+                        int err = wolfSSL_get_error(c_ssl, local_len);
+
+                        if(err == WOLFSSL_ERROR_WANT_WRITE || err == WOLFSSL_ERROR_WANT_READ){
+
+                            continue;
+
+                        }
+                        else{
+
+                            // here wolfssl_read couldn't send any extra data
+                            strcpy(error_buffer, "Write failure while transmitting outbound queue.");
+
+                            error = true;
+                            
+                            unblock_sigpipe_signal();
+
+                            // we return from this function
+                            return error;
+                            
+                        }
+
+                    }
+
+                }
+
+                // getting here the send request succeeds
+
+                // we unblock the sigpipe signal
+                unblock_sigpipe_signal();
+
+            }
+
+        }
+
+
     }
         
     return error;
@@ -1728,6 +1952,85 @@ bool lock_http2_client_nb::interface_connect(std::string_view url, in_addr* inte
             
                 if(!error){ // only continue if no error
             
+                    // we fetch the path for this connection
+
+                    // we check if a forward slash was found after the last colon, if none was we connect to the default root path else the forward slash till the end of the url string is the path
+                    std::string_view path = (base_url_end_index != std::string_view::npos) ? url.substr(base_url_end_index) : "/";
+
+                    // copy the channel path parameter into the channel path array
+                    int path_string_len = path.size();
+                    
+                    if(path_string_len < path_static_array_length){ // we can store the path in the static array if this condition is true
+                        
+                        path.copy(c_path_static, path_string_len); // copy the path into the static array
+                        c_path_static[path_string_len] = '\0'; // null-terminate the array
+                        
+                        c_path = c_path_static;
+                        
+                    }
+                    else if(path_string_len < size_of_allocated_path_memory){ // allocated memory is large enough
+                        
+                        path.copy(c_path_new, path_string_len); // copy the path into the allocated array
+                        c_path_new[path_string_len] = '\0'; // null-terminate the array
+                        
+                        c_path = c_path_new;
+                        
+                    }
+                    else{ // neither static or already allocated memory is large enough, we test the two possible cases 
+                        
+                        if(c_path_new == NULL){ //memory has not been allocated yet
+                        
+                            c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
+                        
+                            if(c_path_new == NULL){
+                            
+                                strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                
+                                error = true;
+                                
+                            }
+                            else{ 
+                                
+                                size_of_allocated_path_memory = path_string_len + 1;
+                                
+                                path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
+                        
+                                c_path_new[path_string_len] = '\0'; // null-terminate the array
+                        
+                                c_path = c_path_new;
+                        
+                            }
+                            
+                        }
+                        else{ // memory has been allocated but is still not sufficient
+                            
+                            delete [] c_path_new; // delete already allocated memory
+                            
+                            c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
+                        
+                            if(c_path_new == NULL){
+                            
+                                strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
+                                
+                                error = true;
+                                
+                            }
+                            else{ 
+                                
+                                size_of_allocated_path_memory = path_string_len + 1;
+                                
+                                path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
+                        
+                                c_path_new[path_string_len] = '\0'; // null-terminate the array
+                        
+                                c_path = c_path_new;
+                        
+                            }
+                            
+                        }
+                        
+                    }
+
                 }
             
             }
