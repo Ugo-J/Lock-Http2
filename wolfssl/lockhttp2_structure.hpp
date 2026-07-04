@@ -1,4 +1,4 @@
-using lock_function = std::function<int(char*, int, int)>;
+using lock_function = std::function<int(char*, int, int, int)>;
 
 // non blocking lock client
 class lock_http2_client_nb {
@@ -17,7 +17,7 @@ public:
     
     // public functions
     bool ping(); // ping function
-    bool send(std::string_view); //send function
+    bool send(std::string_view, int id); // send function
     bool connect(std::string_view); // function to connect to a url
     bool interface_connect(std::string_view url, in_addr* interface_address, char* interface_name); // connect function that binds to a particular interface before connection
     bool close(); // closes an open connection of a lock_http2_client instance
@@ -26,7 +26,7 @@ public:
     char* get_error_message();
     bool basic_read();
     bool clear(); // this function is used to clear the error flags of lock clients in open state, error flags of lock clients in closed state can only be cleared by calling the connect function
-    inline static int default_receive(char*, int, int); // default receive function called by basic read
+    inline static int default_receive(char*, int, int, int); // default receive function called by basic read
     void set_receive_function(lock_function fn);
 
 private:

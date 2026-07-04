@@ -1034,6 +1034,15 @@ int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_f
 
 int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
 
+    // we retrieve the custom id we attached during submit
+    void* stream_data = nghttp2_session_get_stream_user_data(session, frame->hd.stream_id);
+
+    // we cast our stream data id to a uintptr_t so we can safely convert it to an int
+    uintptr_t custom_id = reinterpret_cast<uintptr_t>(stream_data);
+        
+    // we cast our custom id to a int to get the int id supplied during the sed call for this request
+    int user_req_id = static_cast<int>(custom_id);
+
     // we use this switch case to handle different header types
     switch(frame->hd.type){
 
@@ -1155,7 +1164,7 @@ inline bool lock_http2_client_nb::clear(){ // clear the error flag of a lock cli
     
 }
 
-bool lock_http2_client_nb::send(std::string_view payload_data){ // sends data passed as parameter along an established http connection
+bool lock_http2_client_nb::send(std::string_view payload_data, int id){ // sends data passed as parameter along an established http connection
 
     if(!error){ // only continue if no error
     
@@ -1173,8 +1182,11 @@ bool lock_http2_client_nb::send(std::string_view payload_data){ // sends data pa
         provider.source.fd = payload_data.size(); // we store our payload data size
         provider.read_callback = send_body_provider_cb;
 
+        // we use a casting to uintptr_t to convert our supplied integer to a void pointer
+        void* pv_id = reinterpret_cast<void*>(static_cast<uintptr_t>(id));
+
         // we submit our request and fetch the stream_id
-        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, std::size(hdrs), &provider, nullptr);
+        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, std::size(hdrs), &provider, pv_id);
 
         if(stream_id < 0){
 
@@ -1279,7 +1291,7 @@ bool lock_http2_client_nb::send(std::string_view payload_data){ // sends data pa
     
 }
     
-inline int lock_http2_client_nb::default_receive(char* data_array, int length_of_array_data, int length_of_array){
+inline int lock_http2_client_nb::default_receive(char* data_array, int length_of_array_data, int length_of_array, int id){
     
     std::cout<<data_array<<std::endl;
     
@@ -1394,11 +1406,11 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
             
     }
   
-    // check if url is a wss:// endpoint, check case insensitively - for thw wolfssl client we only implement the wss client
+    // check if url is a https:// endpoint, check case insensitively - for thw wolfssl client we only implement the wss client
         
-    if( (url.compare(0, 6, "wss://") == 0) || (url.compare(0, 6, "Wss://") == 0) || (url.compare(0, 6, "WSs://") == 0) || (url.compare(0, 6, "WSS://") == 0) || (url.compare(0, 6, "WsS://") == 0) || (url.compare(0, 6, "wSS://") == 0) || (url.compare(0, 6, "wsS://") == 0) || (url.compare(0, 6, "wSs://") == 0) ){ // endpoint is a wss:// endpoint, the second parameter to the std::string_view compare function is 6 which is the length of the string "wss://" which we are testing for the presence of, we list out and compare the 8 possible combinations of uppercase and lowercase lettering that are valid
+    if(url.compare(0, 8, "https://") == 0){
     
-        int protocol_prefix_len = strlen("wss://");
+        int protocol_prefix_len = strlen("https://");
 
         // we fetch the url length without the wss:// prefix and any path appended to the url, we do this by finding the next '/' character after the initial wss://
         size_t base_url_end_index = url.find('/', protocol_prefix_len);
@@ -1516,10 +1528,10 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
     
     if(!error){ // only continue if no error
         
-        int search_start_index = 6; // we store the index where we would begin the host name search from, we start searching from after the wss:// protocol prefix
+        int search_start_index = 8; // we store the index where we would begin the host name search from, we start searching from after the https:// protocol prefix
 
         // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
-        size_t host_name_end_index = url.find_first_of(":/", search_start_index); // we start searching at the search_start_index - index 6 to bypass the wss:// protocol prefix length
+        size_t host_name_end_index = url.find_first_of(":/", search_start_index); // we start searching at the search_start_index - index 8 to bypass the https:// protocol prefix length
         
         int host_name_len = (host_name_end_index == std::string_view::npos) ? url.size() - search_start_index : (int)host_name_end_index - search_start_index;
 
