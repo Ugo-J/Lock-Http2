@@ -1164,15 +1164,18 @@ inline bool lock_http2_client_nb::clear(){ // clear the error flag of a lock cli
     
 }
 
-bool lock_http2_client_nb::send(std::string_view payload_data, int id){ // sends data passed as parameter along an established http connection
+bool lock_http2_client_nb::send(std::string_view path, std::string_view payload_data, int method, int id){ // sends data passed as parameter along an established http connection
 
     if(!error){ // only continue if no error
     
+        // we check that the supplied method int is within the valid range - we return true to indicate that this send failed but we don't set the error flag to true
+        if(method < 0 || method > std::size(methods) - 1) return true;
+
         // we construct our http headers
         nghttp2_nv hdrs[] = {
-        { (uint8_t*)":method", (uint8_t*)"POST", 7, 4, NGHTTP2_NV_FLAG_NONE },
+        { (uint8_t*)":method", (uint8_t*)methods[method], 7, strlen(methods[method]), NGHTTP2_NV_FLAG_NONE },
         { (uint8_t*)":scheme", (uint8_t*)"https", 7, 5, NGHTTP2_NV_FLAG_NONE },
-        { (uint8_t*)":path", (uint8_t*)c_path, 5, strlen(c_path), NGHTTP2_NV_FLAG_NONE },
+        { (uint8_t*)":path", (uint8_t*)path.data(), 5, path.size(), NGHTTP2_NV_FLAG_NONE },
         { (uint8_t*)":authority", (uint8_t*)c_host, 10, strlen(c_host), NGHTTP2_NV_FLAG_NONE }
         };
 
@@ -1756,6 +1759,9 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
 
                                 // getting here we got a actual error so we set our error flag
                                 strncpy(error_buffer, "Error performing tls handshake ", error_buffer_array_length);
+
+                                // we concatenate the wolfssl error
+                                wolfSSL_ERR_error_string(err, error_buffer + strlen(error_buffer));
                             
                                 error = true;
 

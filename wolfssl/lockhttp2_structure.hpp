@@ -17,7 +17,7 @@ public:
     
     // public functions
     bool ping(); // ping function
-    bool send(std::string_view, int id); // send function
+    bool send(std::string_view path, std::string_view payload, int method, int id); // send function
     bool connect(std::string_view); // function to connect to a url
     bool interface_connect(std::string_view url, in_addr* interface_address, char* interface_name); // connect function that binds to a particular interface before connection
     bool close(); // closes an open connection of a lock_http2_client instance
@@ -142,5 +142,19 @@ private:
     char* cursor = NULL; // this is used to keep track of and arrange fragmented messages in order
     uint64_t size_of_allocated_data_memory = 0L;
     uint64_t length_of_array = 0L;
+
+// http methods
+public:
+
+    static inline constexpr int GET = 0;
+    static inline constexpr int POST = 1;
+    static inline constexpr int PUT = 2;
+    static inline constexpr int PATCH = 3;
+    static inline constexpr int DELETE = 4;
+
+// array to convert the http method to their corresponding text
+private:
+
+    static constexpr const char* methods[] = {"GET", "POST", "PUT", "PATCH", "DELETE"};
     
 };
