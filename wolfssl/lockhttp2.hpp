@@ -1081,6 +1081,16 @@ int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, co
     std::string_view chunk(reinterpret_cast<const char*>(data), len);
     
     std::cout<<"[Stream "<<stream_id<<"] Received "<<len<<" bytes of data.\n";
+
+    // we use the session cnsume function to tell the engine we consumed these bytes so it can update the stream-level flow control window. Here, nghttp2_session_consume IS required.
+    int rv = nghttp2_session_consume(session, stream_id, len);
+    if(rv != 0 && rv != NGHTTP2_ERR_INVALID_ARGUMENT){
+
+        // we ignore INVALID_ARGUMENT because control frames (like SETTINGS/PING) don't belong to a specific stream ID and shouldn't be consumed against it.
+        strcpy(error_buffer, "Failed to update inbound stream window status.");
+        error = true;
+
+    }
     
     return 0;
 
@@ -1287,6 +1297,74 @@ bool lock_http2_client_nb::basic_read(){
 
     if(!error){ // only continue if no error
         
+        // block SIGPIPE signal before attempting to read data, just incase the connection is closed
+        block_sigpipe_signal();
+
+        // we check if there is any available data to be read
+        int len = wolfSSL_read(c_ssl, data_array, static_data_array_length);
+
+        // if wolfssl_read returns a value <= 0 we check if there is data available to be read
+        if(len <= 0){
+
+            // we get the error message
+            int err = wolfSSL_get_error(c_ssl, len);
+
+            // we check if the wolfssl library still expects more reads or if this is an actual error
+            if(err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE){
+
+                // getting here no data is available to read so we unblock our sigpipe sigal and exit
+
+                // we unblock the sigpipe signal
+                unblock_sigpipe_signal();
+
+                // we return error at this point because it is still 0 and it signals that basic read didn't fail there just is no data to read
+                return error;
+
+
+            }
+            else if(err == WOLFSSL_ERROR_ZERO_RETURN){
+
+                // getting here the remote host closed the connection
+                strcpy(error_buffer, "Remote host closed connection.");
+
+                error = true;
+
+                // we unblock the sigpipe signal
+                unblock_sigpipe_signal();
+
+                return error;
+
+            }
+            else{
+
+                // here wolfssl_read couldn't fetch any data
+                strcpy(error_buffer, "Read failure while polling inbound queue.");
+
+                error = true;
+
+                // we unblock the sigpipe signal
+                unblock_sigpipe_signal();
+
+                return error;
+
+            }
+
+        }
+
+        // we read the raw TLS bytes and hand them over to the HTTP/2 engine. this call internally triggers our registered header/data callbacks with the corresponding data
+        ssize_t processed_bytes = nghttp2_session_mem_recv2(session, reinterpret_cast<const uint8_t*>(data_array), (size_t)len);
+        
+        if(processed_bytes < 0){
+
+            strcpy(error_buffer, "nghttp2 deserialization error: ");
+            strcat(error_buffer, nghttp2_strerror(processed_bytes));
+            error = true;
+
+        }
+
+        // we unblock the sigpipe signal
+        unblock_sigpipe_signal();
+
     }
         
     return error;
