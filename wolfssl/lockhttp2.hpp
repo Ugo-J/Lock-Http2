@@ -1164,7 +1164,7 @@ inline bool lock_http2_client_nb::clear(){ // clear the error flag of a lock cli
     
 }
 
-bool lock_http2_client_nb::send(std::string_view path, std::string_view payload_data, int method, int id){ // sends data passed as parameter along an established http connection
+bool lock_http2_client_nb::send(std::string_view path, char* payload_data, int method, int id){ // sends data passed as parameter along an established http connection
 
     if(!error){ // only continue if no error
     
@@ -1181,15 +1181,15 @@ bool lock_http2_client_nb::send(std::string_view path, std::string_view payload_
 
         // we setup ad initialise our data provider
         nghttp2_data_provider2 provider;
-        provider.source.ptr = const_cast<char*>(payload_data.data());
-        provider.source.fd = payload_data.size(); // we store our payload data size
+        provider.source.ptr = const_cast<char*>(payload_data);
+        provider.source.fd = (payload_data != nullptr) ? strlen(payload_data) : 0; // we store our payload data size
         provider.read_callback = send_body_provider_cb;
 
         // we use a casting to uintptr_t to convert our supplied integer to a void pointer
         void* pv_id = reinterpret_cast<void*>(static_cast<uintptr_t>(id));
 
         // we submit our request and fetch the stream_id
-        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, std::size(hdrs), &provider, pv_id);
+        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, std::size(hdrs), (payload_data != nullptr) ? &provider : nullptr, pv_id);
 
         if(stream_id < 0){
 
@@ -1415,13 +1415,10 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
     
         int protocol_prefix_len = strlen("https://");
 
-        // we fetch the url length without the wss:// prefix and any path appended to the url, we do this by finding the next '/' character after the initial wss://
-        size_t base_url_end_index = url.find('/', protocol_prefix_len);
-
-        int base_url_length = (base_url_end_index != std::string_view::npos) ? (int)base_url_end_index - protocol_prefix_len : url.size() - protocol_prefix_len; // saves the length of the url without the wss:// prefix and the path if any
+        int base_url_length = url.size() - protocol_prefix_len; // saves the length of the url without the https:// prefix
         
-        // size of required memory in bytes to store the base url and the port number if it would be appended
-        int req_mem = base_url_length + 5; // we add an extra 5 bytes to the base url length to accomodate for the chance that this url was supplied without a port number so we have enough room to append port :443 to the base url
+        // size of required memory in bytes to store the base url
+        int req_mem = base_url_length;
 
         // we create our ssl object
         c_ssl = wolfSSL_new(ssl_ctx);
@@ -1506,7 +1503,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
 
             }
             
-            if(!error){ // checks if there was any error allocating memory, that is if that part of the code was executed. The constructor only continues if there was no error 
+            /* if(!error){ // checks if there was any error allocating memory, that is if that part of the code was executed. The constructor only continues if there was no error
                 
                 // we check if the supplied url has the port number appended if not we append it
                 if(strchr(c_url, ':') == NULL){
@@ -1516,7 +1513,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
                 // set SSL mode to retry automatically should SSL connection fail
                 // wolfSSL_set_mode(c_ssl, WOLFSSL_MODE_AUTO_RETRY);
         
-            }
+            } */
         
         }
     
@@ -1533,10 +1530,10 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
         
         int search_start_index = 8; // we store the index where we would begin the host name search from, we start searching from after the https:// protocol prefix
 
-        // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
-        size_t host_name_end_index = url.find_first_of(":/", search_start_index); // we start searching at the search_start_index - index 8 to bypass the https:// protocol prefix length
+        /* // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
+        size_t host_name_end_index = url.find_first_of(":/", search_start_index); // we start searching at the search_start_index - index 8 to bypass the https:// protocol prefix length */
         
-        int host_name_len = (host_name_end_index == std::string_view::npos) ? url.size() - search_start_index : (int)host_name_end_index - search_start_index;
+        int host_name_len = url.size() - search_start_index;
 
         if(host_name_len < host_static_array_length){ // static array is large enough
         
@@ -1622,7 +1619,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
                 if(!wolfSSL_UseSNI(c_ssl, WOLFSSL_SNI_HOST_NAME, c_host, host_name_len)){
                 // we test the return value. wolfSSL_UseSNI returns 0 on error and 1 on success
                     
-                    strncpy(error_buffer, "Error setting up Lock client for SNI TLS extension", error_buffer_array_length);
+                    strcpy(error_buffer, "Error setting up Lock client for SNI TLS extension");
                         
                     error = true;
                 
@@ -1632,150 +1629,64 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
             
             if(!error){
             // only continue if no error
-            
-                // we store the start index of the path from the supplied url - we search for the next forward slash after the last colon, that is the start of the path in the supplied url string view
-                size_t path_start_index = url.find('/', search_start_index);
-                
-                // we check if a forward slash was found after the last colon, if none was we connect to the default root path else the forward slash till the end of the url string is the path
-                std::string_view path = (path_start_index != std::string_view::npos) ? url.substr(path_start_index) : "/";
 
-                // copy the channel path parameter into the channel path array
-                int path_string_len = path.size();
-                
-                if(path_string_len < path_static_array_length){ // we can store the path in the static array if this condition is true
-                    
-                    path.copy(c_path_static, path_string_len); // copy the path into the static array
-                    c_path_static[path_string_len] = '\0'; // null-terminate the array
-                    
-                    c_path = c_path_static;
-                    
-                }
-                else if(path_string_len < size_of_allocated_path_memory){ // allocated memory is large enough
-                    
-                    path.copy(c_path_new, path_string_len); // copy the path into the allocated array
-                    c_path_new[path_string_len] = '\0'; // null-terminate the array
-                    
-                    c_path = c_path_new;
-                    
-                }
-                else{ // neither static or already allocated memory is large enough, we test the two possible cases 
-                    
-                    if(c_path_new == NULL){ //memory has not been allocated yet
-                    
-                        c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
-                    
-                        if(c_path_new == NULL){
-                        
-                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
-                            
-                            error = true;
-                            
-                        }
-                        else{ 
-                            
-                            size_of_allocated_path_memory = path_string_len + 1;
-                            
-                            path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                    
-                            c_path_new[path_string_len] = '\0'; // null-terminate the array
-                    
-                            c_path = c_path_new;
-                    
-                        }
-                        
-                    }
-                    else{ // memory has been allocated but is still not sufficient
-                        
-                        delete [] c_path_new; // delete already allocated memory
-                        
-                        c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
-                    
-                        if(c_path_new == NULL){
-                        
-                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
-                            
-                            error = true;
-                            
-                        }
-                        else{ 
-                            
-                            size_of_allocated_path_memory = path_string_len + 1;
-                            
-                            path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                    
-                            c_path_new[path_string_len] = '\0'; // null-terminate the array
-                    
-                            c_path = c_path_new;
-                    
-                        }
-                        
-                    }
-                    
-                }
+                // we create a local char array to hold the port extracted from the url
+                const int MAX_CHAR_FOR_PORT = 8; // a port number can have a maximum of 5 characters because port numbers are 16 bit integers
+                char c_port[MAX_CHAR_FOR_PORT];
+
+                // we set our port number to 443 as this is a https request
+                std::string_view port = "443";
+
+                // we now copy the derived port into char array
+                int num_of_chars_copied = port.copy(c_port, port.size());
+
+                // we null terminate the c_port array
+                c_port[num_of_chars_copied] = '\0';
+
+                // we call our connect to server function with the interface parameters set to null
+                int sockfd = connect_to_server(c_host, c_port, nullptr, nullptr);
                 
                 if(!error){ // only continue if no error
 
-                    // we create a local char array to hold the port extracted from the url
-                    const int MAX_CHAR_FOR_PORT = 8; // a port number can have a maximum of 5 characters because port numbers are 16 bit integers
-                    char c_port[MAX_CHAR_FOR_PORT];
+                    // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
+                    wolfSSL_set_fd(c_ssl, sockfd);
 
-                    // since the host_name_end_index already finds the first character out of : and / after the host name we use it to find the port number location if any
+                    // we set the application layer protocol for our ssl object to http2
+                    wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
 
-                    // we first check if the host name end index was either std::string_view::npos or / in which case we know the host wasn't supplied so we store 443 as the host, but if the : character was found then the host was supplied so we just create a sub string view from after the : character to either the / starting the path if supplied, but if not supplied till std::string_view::npos - host_name_end_index - 1 which would be a very large number the copy takes the rest of the url string_view
-                    std::string_view port = (host_name_end_index == std::string_view::npos || url[host_name_end_index] == '/') ? "443" : url.substr(host_name_end_index + 1, url.find('/', host_name_end_index) - host_name_end_index - 1);
+                    // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
+                    int len;
 
-                    // we now copy the derived port into char array
-                    int num_of_chars_copied = port.copy(c_port, port.size());
+                    while((len = wolfSSL_connect(c_ssl)) != WOLFSSL_SUCCESS){
+                        
+                        // we get the error message
+                        int err = wolfSSL_get_error(c_ssl, len);
 
-                    // we null terminate the c_port array
-                    c_port[num_of_chars_copied] = '\0';
+                        // we check if the wolfssl handle is still expecting a read or a write
+                        if(err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE){
 
-                    // we call our connect to server function with the interface parameters set to null
-                    int sockfd = connect_to_server(c_host, c_port, nullptr, nullptr);
-                    
+                            continue;
+
+                        }
+                        else{
+
+                            // getting here we got a actual error so we set our error flag
+                            strncpy(error_buffer, "Error performing tls handshake ", error_buffer_array_length);
+
+                            // we concatenate the wolfssl error
+                            wolfSSL_ERR_error_string(err, error_buffer + strlen(error_buffer));
+                        
+                            error = true;
+
+                            // we break out of this loop
+                            break;
+
+                        }
+
+                    }
+                
                     if(!error){ // only continue if no error
-
-                        // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
-                        wolfSSL_set_fd(c_ssl, sockfd);
-
-                        // we set the application layer protocol for our ssl object to http2
-                        wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
-
-                        // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
-                        int len;
-
-                        while((len = wolfSSL_connect(c_ssl)) != WOLFSSL_SUCCESS){
-                            
-                            // we get the error message
-                            int err = wolfSSL_get_error(c_ssl, len);
-
-                            // we check if the wolfssl handle is still expecting a read or a write
-                            if(err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE){
-
-                                continue;
-
-                            }
-                            else{
-
-                                // getting here we got a actual error so we set our error flag
-                                strncpy(error_buffer, "Error performing tls handshake ", error_buffer_array_length);
-
-                                // we concatenate the wolfssl error
-                                wolfSSL_ERR_error_string(err, error_buffer + strlen(error_buffer));
-                            
-                                error = true;
-
-                                // we break out of this loop
-                                break;
-
-                            }
-
-                        }
-                    
-                        if(!error){ // only continue if no error
-                    
-                        }
-                    
+                
                     }
                 
                 }

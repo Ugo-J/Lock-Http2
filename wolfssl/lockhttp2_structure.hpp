@@ -17,7 +17,7 @@ public:
     
     // public functions
     bool ping(); // ping function
-    bool send(std::string_view path, std::string_view payload, int method, int id); // send function
+    bool send(std::string_view path, char* payload, int method, int id); // send function
     bool connect(std::string_view); // function to connect to a url
     bool interface_connect(std::string_view url, in_addr* interface_address, char* interface_name); // connect function that binds to a particular interface before connection
     bool close(); // closes an open connection of a lock_http2_client instance
