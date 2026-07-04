@@ -1340,7 +1340,10 @@ bool lock_http2_client_nb::basic_read(){
             else if(err == WOLFSSL_ERROR_ZERO_RETURN){
 
                 // getting here the remote host closed the connection
-                strcpy(error_buffer, "Remote host closed connection.");
+                strcpy(error_buffer, "Remote host closed connection: ");
+
+                // we concatenate the wolfssl error
+                wolfSSL_ERR_error_string(err, error_buffer + strlen(error_buffer));
 
                 error = true;
 
@@ -1353,7 +1356,10 @@ bool lock_http2_client_nb::basic_read(){
             else{
 
                 // here wolfssl_read couldn't fetch any data
-                strcpy(error_buffer, "Read failure while polling inbound queue.");
+                strcpy(error_buffer, "Read failure while polling inbound queue: ");
+
+                // we concatenate the wolfssl error
+                wolfSSL_ERR_error_string(err, error_buffer + strlen(error_buffer));
 
                 error = true;
 
