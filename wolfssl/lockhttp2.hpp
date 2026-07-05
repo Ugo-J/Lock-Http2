@@ -1090,16 +1090,6 @@ int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, co
     std::string_view chunk(reinterpret_cast<const char*>(data), len);
     
     std::cout<<"[Stream "<<stream_id<<"] Received "<<len<<" bytes of data.\n"<<chunk<<std::endl;
-
-    // we use the session cnsume function to tell the engine we consumed these bytes so it can update the stream-level flow control window. Here, nghttp2_session_consume IS required.
-    int rv = nghttp2_session_consume(session, stream_id, len);
-    if(rv != 0 && rv != NGHTTP2_ERR_INVALID_ARGUMENT){
-
-        // we ignore INVALID_ARGUMENT because control frames (like SETTINGS/PING) don't belong to a specific stream ID and shouldn't be consumed against it.
-        strcpy(error_buffer, "Failed to update inbound stream window status.");
-        error = true;
-
-    }
     
     return 0;
 
@@ -1321,12 +1311,8 @@ bool lock_http2_client_nb::basic_read(){
         // if wolfssl_read returns a value <= 0 we check if there is data available to be read
         if(len <= 0){
 
-            std::cout<<len<<std::endl;
-
             // we get the error message
             int err = wolfSSL_get_error(c_ssl, len);
-
-            std::cout<<err<<std::endl;
 
             // we check if the wolfssl library still expects more reads or if this is an actual error
             if(err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE){
@@ -1700,12 +1686,15 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
                         // we check if h2 protocol was negotiated
                         char* protocol = nullptr;
                         unsigned short protocol_len = 0;
+
+                        // we call wolfssl get alpn protocol to check the negotiated protocol
                         wolfSSL_ALPN_GetProtocol(c_ssl, &protocol, &protocol_len);
+
                         if(protocol_len != 2 || memcmp(protocol, "h2", 2) != 0){
-                            std::cout<<"h2 was not negotiated"<<std::endl;
-                        }
-                        else{
-                            std::cout<<"h2 was negotiated"<<std::endl;
+
+                            strcpy(error_buffer, "h2 protocol was not negotiated");
+
+                            error = 1;
                         }
 
                     }
@@ -2143,7 +2132,7 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
 
         // Try to connect
         if (::connect(sock, p->ai_addr, p->ai_addrlen) == 0) {
-            std::cout<<"Connected to "<<hostname<<std::endl;
+            // std::cout<<"Connected to "<<hostname<<std::endl;
             break; // Connected successfully
         }
 
