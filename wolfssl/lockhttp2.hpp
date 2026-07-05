@@ -1089,7 +1089,7 @@ int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, co
 
     std::string_view chunk(reinterpret_cast<const char*>(data), len);
     
-    std::cout<<"[Stream "<<stream_id<<"] Received "<<len<<" bytes of data.\n";
+    std::cout<<"[Stream "<<stream_id<<"] Received "<<len<<" bytes of data.\n"<<chunk<<std::endl;
 
     // we use the session cnsume function to tell the engine we consumed these bytes so it can update the stream-level flow control window. Here, nghttp2_session_consume IS required.
     int rv = nghttp2_session_consume(session, stream_id, len);

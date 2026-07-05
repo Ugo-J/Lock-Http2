@@ -138,8 +138,8 @@ private:
     inline static const int static_data_array_length = 64*1024; // received received data static array length 64KB
     char data_array_static[static_data_array_length] = {'\0'}; // static array for holding received data
     char* data_array_new = NULL;
-    char* data_array = NULL;
-    char* cursor = NULL; // this is used to keep track of and arrange fragmented messages in order
+    char* data_array = data_array_static;
+    char* cursor = data_array; // this is used to keep track of and arrange fragmented messages in order
     uint64_t size_of_allocated_data_memory = 0L;
     uint64_t length_of_array = 0L;
 
