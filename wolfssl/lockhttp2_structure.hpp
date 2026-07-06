@@ -149,6 +149,12 @@ private:
 
     void release(int slot);
 
+// variable for receiving the http2 buinary data from the network before passing it to http2
+private:
+
+    inline static const int DATA_ARRAY_LENGTH = 32 * 1024;
+    char data_array[DATA_ARRAY_LENGTH] = {'\0'}; // array for holding received data before passing to nghttp2
+
 // http methods
 public:
 

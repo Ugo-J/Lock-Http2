@@ -842,10 +842,10 @@ lock_http2_client_nb::lock_http2_client_nb(){
         }
 
         // now we set aside our static memory for our wolfssl ctx to use for io operations for ssl objects - we set the max number of session objects drawing from this pool to 1 in our last parameter
-        // wolfSSL_CTX_load_static_memory(&ssl_ctx, NULL, crypto_memory_pool, CRYPTO_ARENA_SIZE, WOLFMEM_IO_POOL, 1);
+        wolfSSL_CTX_load_static_memory(&ssl_ctx, NULL, crypto_memory_pool, CRYPTO_ARENA_SIZE, WOLFMEM_IO_POOL, 1);
 
         // load the general memory pool
-        // wolfSSL_CTX_load_static_memory(&ssl_ctx, NULL, general_memory_pool, CRYPTO_ARENA_SIZE, WOLFMEM_GENERAL, 1);
+        wolfSSL_CTX_load_static_memory(&ssl_ctx, NULL, general_memory_pool, CRYPTO_ARENA_SIZE, WOLFMEM_GENERAL, 1);
 
         // NGHTTP2 INITIALISATION
 
@@ -1075,9 +1075,18 @@ int lock_http2_client_nb::handle_header(const nghttp2_frame *frame, const uint8_
 
 int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len){
 
-    std::string_view chunk(reinterpret_cast<const char*>(data), len);
+    /* std::string_view chunk(reinterpret_cast<const char*>(data), len);
     
-    std::cout<<"[Stream "<<stream_id<<"] Received "<<len<<" bytes of data.\n"<<chunk<<std::endl;
+    std::cout<<"[Stream "<<stream_id<<"] Received "<<len<<" bytes of data.\n"<<chunk<<std::endl; */
+
+    // we fetch our stream data for this request
+    meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, stream_id));
+
+    // we copy this data into the data array for this stream using the cursor
+    std::memcpy(stream_metadata->cursor, data, len);
+
+    // we increment our cursor
+    stream_metadata->cursor += len;
     
     return 0;
 
@@ -1088,6 +1097,15 @@ int lock_http2_client_nb::handle_stream_close(int32_t stream_id, uint32_t error_
     if(error_code == NGHTTP2_NO_ERROR){
 
         std::cout<<"[Stream "<<stream_id<<"] Closed successfully.\n";
+
+        // we fetch our stream metadata for this stream
+        meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, stream_id));
+
+        // we null terminate our received data
+        *(stream_metadata->cursor) = '\0';
+
+        // since this is the end of our stream we call our recv data function
+        
 
     }
     else{
@@ -1163,11 +1181,25 @@ bool lock_http2_client_nb::send(std::string_view path, char* payload_data, int m
         provider.source.fd = (payload_data != nullptr) ? strlen(payload_data) : 0; // we store our payload data size
         provider.read_callback = send_body_provider_cb;
 
-        // we use a casting to uintptr_t to convert our supplied integer to a void pointer
-        void* pv_id = reinterpret_cast<void*>(static_cast<uintptr_t>(id));
+        // we fetch our next free data array we would use to store this stream's response
+        int slot = acquire();
 
-        // we submit our request and fetch the stream_id
-        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, std::size(hdrs), (payload_data != nullptr) ? &provider : nullptr, pv_id);
+        // we check that we acquired a valid slot
+        if(slot < 0){
+
+            strcpy(error_buffer, "Error acquiring data slot for http request");
+
+            error = true;
+
+            return error;
+
+        }
+
+        // getting here we have acquired an initialised data slot we now store the user supplied id in our metadata slot
+        metadata[slot].user_id = id;
+
+        // we submit our request and fetch the stream_id - we pas our metadata slot as a void pointer to this request
+        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, std::size(hdrs), (payload_data != nullptr) ? &provider : nullptr, static_cast<void*>(&metadata[slot]));
 
         if(stream_id < 0){
 
@@ -1294,7 +1326,7 @@ bool lock_http2_client_nb::basic_read(){
         block_sigpipe_signal();
 
         // we check if there is any available data to be read
-        int len = wolfSSL_read(c_ssl, data_array, static_data_array_length);
+        int len = wolfSSL_read(c_ssl, data_array, DATA_ARRAY_LENGTH);
 
         // if wolfssl_read returns a value <= 0 we check if there is data available to be read
         if(len <= 0){
