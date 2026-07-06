@@ -115,7 +115,7 @@ private:
         
    WOLFSSL* c_ssl = NULL; // defines the ssl object that is used to set instance-specific wolfssl options
    nghttp2_session* session; // nghttp2 session object pointer
-   static constexpr unsigned int MAX_CONCURRENT_STREAMS = 100; // this holds the max number of streams each lockhttp2 client can hold. a stream is essentially a request to a server pending a response, so the max concurrent streams is essentially the number of unresponded streams we can have on this handle
+   static constexpr unsigned int MAX_CONCURRENT_STREAMS = 32 + 64; // this holds the max number of streams each lockhttp2 client can hold. a stream is essentially a request to a server pending a response, so the max concurrent streams is essentially the number of unresponded streams we can have on this handle. we set the max concurrent streams to account for our total available data arrays which is 32 for the static array and 64 for the heap array
 
 // lock client states
 private: 
@@ -136,28 +136,129 @@ private:
 // acquire & release functions for acquiring the next free static array
 private:
 
-    // we use the free mask to keep track of the free arrays in our static arrays for receiving stream data
-    uint32_t free_mask = 0xFFFFFFFF;
+    // we use the static mask to keep track of the free arrays in our static arrays for receiving stream data
+    uint32_t static_mask = 0xFFFFFFFF;
+
+    // we use the heap mask to keep track of the free metadata locations for receiving stream data to our heap locations
+    uint64_t heap_mask = 0xFFFFFFFFFFFFFFFF;
 
     int acquire(){
 
-        // the builtin ctz function is undefined when passed a parameter of 0 so we first check that the free mask isn't 0
-        if(free_mask == 0) return -1;
+        // the builtin ctz function is undefined when passed a parameter of 0 so we check that the static mask isn't 0
 
-        // we fetch the lowest free bit in our bit mask
-        int slot = __builtin_ctz(free_mask);
+        if(static_mask != 0){
 
-        // we mark the acquired slot as in use
-        free_mask &= ~(1 << slot);
+            // we fetch the lowest free bit in our bit mask
+            int slot = __builtin_ctz(static_mask);
+
+            // we mark the acquired slot as in use
+            static_mask &= ~(1u << slot);
+
+            // we set up the metadata slot we just acquired
+
+            // we first check if this memort location has been initialised before
+            if(metadata[slot].data_array == nullptr){
+
+                // getting here this location hasn't been initialised before so we initialise it
+
+                // we set the data array pointer
+                metadata[slot].data_array = static_array[slot];
+
+                // we set the cursor
+                metadata[slot].cursor = static_array[slot];
+
+                // we set the array size
+                metadata[slot].array_size = STATIC_ARRAY_SIZE;
+
+                // we set the array index both in the metadata array and the data array array because these are two parallel arrays
+                metadata[slot].array_index = slot;
+
+            }
+            else{
+
+                // getting here this location has been initialised before so we just reset our cursor
+                metadata[slot].cursor = static_array[slot];
+
+            }
+
+            return slot;
+
+        }
+
+        // getting here the static array was full so we check the heap array
+
+        // the builtin ctz function is undefined when passed a parameter of 0 so we check that the heap mask isn't 0
+
+        if(heap_mask != 0){
+
+            // we fetch the lowest free bit in our bit mask
+            int slot = __builtin_ctzll(heap_mask);
+
+            // we mark the acquired slot as in use
+            heap_mask &= ~(1ull << slot);
+
+            // we add NUM_OF_STATIC_ARRAYS to our acquired slot because heap mask metadata entries start at index NUM_OF_STATIC_ARRAYS
+            slot += NUM_OF_STATIC_ARRAYS;
+
+            // we initialise our slot location
+
+            // we check if memory has been allocated in this metadata location before
+            if(metadata[slot].data_array == nullptr){
+
+                // getting here memory has not been allocated to this location before so we allocate it
+
+                // we allocate memory for our data array pointer - we size the allocated memory just like our static array arrays
+                metadata[slot].data_array = new(std::nothrow) char[STATIC_ARRAY_SIZE]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+
+                // we check that data was indeed allocated ad return if the allocation fails
+                if(metadata[slot].data_array == nullptr) return -1;
+
+                // we set the cursor
+                metadata[slot].cursor = metadata[slot].data_array;
+
+                // we set the array size
+                metadata[slot].array_size = STATIC_ARRAY_SIZE;
+
+                // we set the array index both in the metadata array and the data array array becasue these are two parallel arrays
+                metadata[slot].array_index = slot;
+
+            }
+            else{
+
+                // getting here memory has been allocated before for this location so we just reset its cursor other variables remain valid
+                metadata[slot].cursor = metadata[slot].data_array;
+
+            }
+
+            return slot;
+
+        }
+
+        return -1;
+
+    }
+
+    // this function is used to acquire a particular heap location with a specified memory size
+    int acquire_heap(int sz){
+
+        int slot;
 
         return slot;
 
     }
 
-    int release(int slot){
+    void release(int slot){
 
-        // we mark the supplied slot as free
-        free_mask |= (1 << slot);
+        // we first check if the slot to release is a static slot or a heap slot
+        if(slot < NUM_OF_STATIC_ARRAYS){
+
+            static_mask |= (1u << slot);
+        }
+        else{
+
+            heap_mask |= (1ull << (slot - NUM_OF_STATIC_ARRAYS));
+        }
+
     }
 
 // http methods
