@@ -1075,18 +1075,76 @@ int lock_http2_client_nb::handle_header(const nghttp2_frame *frame, const uint8_
 
 int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len){
 
-    /* std::string_view chunk(reinterpret_cast<const char*>(data), len);
-    
-    std::cout<<"[Stream "<<stream_id<<"] Received "<<len<<" bytes of data.\n"<<chunk<<std::endl; */
-
     // we fetch our stream data for this request
     meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, stream_id));
 
-    // we copy this data into the data array for this stream using the cursor
-    std::memcpy(stream_metadata->cursor, data, len);
+    // we check that our stream metadata isn't null, if it is we run nothing and just return
+    if(stream_metadata != nullptr){
 
-    // we increment our cursor
-    stream_metadata->cursor += len;
+        // getting here our stream metadata isn't null so we continue
+
+        // we fetch the length of data stored for this stream which we get by computing cursor - data array
+        int length_of_data = stream_metadata->cursor - stream_metadata->data_array;
+
+        // we compute the capacity needed to store this data'
+        int capacity = length_of_data + static_cast<int>(len);
+
+        // now we check if the capacity needed is > our data array capacity
+        if(capacity > stream_metadata->array_size){
+
+            // getting here copying this data chunk to our data array would cause our data array to overflow so we allocate a capacity that is twice what we would need to store this data in our data array
+
+            // we fetch a new slot for this stream with enough capacity
+            int slot = acquire_heap(capacity * 2);
+
+            // we check if the acquire heap request was successful
+            if(slot < 0){
+
+                // getting here the acquire heap request failed so we free the current slot this thread uses and set the stream user data pointer to null so subsequent calls to handle data chunk ignores it
+
+                // we release the slot used by this stream
+                release(stream_metadata->array_index);
+
+                // we set the stream user data to nullptr
+                nghttp2_session_set_stream_user_data(session, stream_id, nullptr);
+
+                // we set our lock client error flag
+                strcpy(error_buffer, "Error acquiring heap slot for stream after exceeding initial slot capacity");
+
+                error = true;
+
+                // we return from this function
+                return -1;
+
+            }
+
+            // getting here the returned slot is valid so we copy our data to the new slot
+            std::memcpy(metadata[slot].data_array, stream_metadata->data_array, length_of_data);
+
+            // we increment our new slot cursor
+            metadata[slot].cursor += length_of_data;
+
+            // we copy our user supplied id to our new slot
+            metadata[slot].user_id = stream_metadata->user_id;
+
+            // we release the old slot used by this stream back to our data array
+            release(stream_metadata->array_index);
+
+            // we set the stream user data to the new slot
+            nghttp2_session_set_stream_user_data(session, stream_id, static_cast<void*>(&metadata[slot]));
+
+            // we point our local stream metadata pointer to this new slot so this function can continue seamlessly
+            stream_metadata = &metadata[slot];
+
+        }
+
+        // we copy this data into the data array for this stream using the cursor
+        std::memcpy(stream_metadata->cursor, data, len);
+
+        // we increment our cursor
+        stream_metadata->cursor += len;
+
+    }
     
     return 0;
 

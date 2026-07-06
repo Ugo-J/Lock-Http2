@@ -149,7 +149,7 @@ private:
 
     void release(int slot);
 
-// variable for receiving the http2 buinary data from the network before passing it to http2
+// variable for receiving the http2 binary data from the network before passing it to http2
 private:
 
     inline static const int DATA_ARRAY_LENGTH = 32 * 1024;
