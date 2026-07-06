@@ -2146,6 +2146,183 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
     return sock; // Return the connected socket
 }
 
+int lock_http2_client_nb::acquire(){
+
+    // the builtin ctz function is undefined when passed a parameter of 0 so we check that the static mask isn't 0
+
+    if(static_mask != 0){
+
+        // we fetch the lowest free bit in our bit mask
+        int slot = __builtin_ctz(static_mask);
+
+        // we mark the acquired slot as in use
+        static_mask &= ~(1u << slot);
+
+        // we set up the metadata slot we just acquired
+
+        // we first check if this memort location has been initialised before
+        if(metadata[slot].data_array == nullptr){
+
+            // getting here this location hasn't been initialised before so we initialise it
+
+            // we set the data array pointer
+            metadata[slot].data_array = static_array[slot];
+
+            // we set the cursor
+            metadata[slot].cursor = static_array[slot];
+
+            // we set the array size
+            metadata[slot].array_size = STATIC_ARRAY_SIZE;
+
+            // we set the array index both in the metadata array and the data array array because these are two parallel arrays
+            metadata[slot].array_index = slot;
+
+        }
+        else{
+
+            // getting here this location has been initialised before so we just reset our cursor
+            metadata[slot].cursor = static_array[slot];
+
+        }
+
+        return slot;
+
+    }
+
+    // getting here the static array was full so we check the heap array
+
+    // the builtin ctz function is undefined when passed a parameter of 0 so we check that the heap mask isn't 0
+
+    if(heap_mask != 0){
+
+        // we fetch the lowest free bit in our bit mask
+        int slot = __builtin_ctzll(heap_mask);
+
+        // we mark the acquired slot as in use
+        heap_mask &= ~(1ull << slot);
+
+        // we add NUM_OF_STATIC_ARRAYS to our acquired slot because heap mask metadata entries start at index NUM_OF_STATIC_ARRAYS
+        slot += NUM_OF_STATIC_ARRAYS;
+
+        // we initialise our slot location
+
+        // we check if memory has been allocated in this metadata location before
+        if(metadata[slot].data_array == nullptr){
+
+            // getting here memory has not been allocated to this location before so we allocate it
+
+            // we allocate memory for our data array pointer - we size the allocated memory just like our static array arrays
+            metadata[slot].data_array = new(std::nothrow) char[STATIC_ARRAY_SIZE]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+
+            // we check that data was indeed allocated ad return if the allocation fails
+            if(metadata[slot].data_array == nullptr) return -1;
+
+            // we set the cursor
+            metadata[slot].cursor = metadata[slot].data_array;
+
+            // we set the array size
+            metadata[slot].array_size = STATIC_ARRAY_SIZE;
+
+            // we set the array index both in the metadata array and the data array array becasue these are two parallel arrays
+            metadata[slot].array_index = slot;
+
+        }
+        else{
+
+            // getting here memory has been allocated before for this location so we just reset its cursor other variables remain valid
+            metadata[slot].cursor = metadata[slot].data_array;
+
+        }
+
+        return slot;
+
+    }
+
+    return -1;
+
+}
+
+int lock_http2_client_nb::acquire_heap(int sz){
+
+    // we first check that we have a free heap slot
+    if(heap_mask == 0) return -1;
+
+    // we get a local copy of our heap mask
+    uint64_t free_slots = heap_mask;
+
+    while(free_slots != 0){
+
+        // we fetch our next free heap slot
+        int bit_index = __builtin_ctzll(free_slots);
+        int slot = bit_index + NUM_OF_STATIC_ARRAYS;
+
+        // we check if memory has already been allocated for this slot
+        if(metadata[slot].data_array == nullptr){
+
+            // getting here memory has not been allocated for this slot so we allocate its required memory, initialise its data members and return this slot
+
+            // we allocate memory for our data array pointer - we use the supplied parameter as the heap array size
+            metadata[slot].data_array = new(std::nothrow) char[sz]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+
+            // we check that data was indeed allocated ad return if the allocation fails
+            if(metadata[slot].data_array == nullptr) return -1;
+
+            // we set the cursor
+            metadata[slot].cursor = metadata[slot].data_array;
+
+            // we set the array size
+            metadata[slot].array_size = sz;
+
+            // we set the array index both in the metadata array and the data array array becasue these are two parallel arrays
+            metadata[slot].array_index = slot;
+
+            // we mark this slot as in use
+            heap_mask &= ~(1ull << bit_index);
+
+            // we return this slot
+            return slot;
+
+        }
+
+        // getting here memory has already been allocated for this slot so we check if the allocated memory for this slot is >= our acquire heap parameter
+        if(metadata[slot].array_size >= sz){
+
+            // getting here this array size ia >= our sz parameter so we reset our cursor mark this slot as in use and return it
+
+            // we reset the cursor
+            metadata[slot].cursor = metadata[slot].data_array;
+
+            // we mark this slot as in use
+            heap_mask &= ~(1ull << (slot - NUM_OF_STATIC_ARRAYS));
+
+            // we return this slot
+            return slot;
+
+        }
+
+        free_slots &= ~(1ull << bit_index);
+
+    }
+
+    // getting here there is no free slot with size >= sz and no empty slot we can use so we return -1
+    return -1;
+
+}
+
+void lock_http2_client_nb::release(int slot){
+
+    // we first check if the slot to release is a static slot or a heap slot
+    if(slot < NUM_OF_STATIC_ARRAYS){
+
+        static_mask |= (1u << slot);
+    }
+    else{
+
+        heap_mask |= (1ull << (slot - NUM_OF_STATIC_ARRAYS));
+    }
+
+}
+
 int lock_http2_client_nb::reset(){
 
     if(!c_ssl) return 0;
