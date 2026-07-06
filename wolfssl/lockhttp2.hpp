@@ -961,18 +961,6 @@ lock_http2_client_nb::~lock_http2_client_nb(){
         wolfSSL_free(c_ssl); // frees the wolfssl object
     }
     
-    if(send_data_new != NULL){
-        
-        delete [] send_data_new; // free the memory used if the send string is stored on the heap
-        
-    }
-    
-    if (data_array_new != NULL){
-        
-        delete [] data_array_new; // free the memory used to receive data
-        
-    }
-    
 }
 
 int lock_http2_client_nb::on_frame_recv_cb(nghttp2_session *session, const nghttp2_frame *frame, void *user_data){

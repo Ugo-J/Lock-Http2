@@ -122,26 +122,43 @@ private:
     
     inline static const unsigned char OPEN = (unsigned char)0;
     inline static const unsigned char CLOSED = (unsigned char)1;
-   
-// instance variables for sending data
-private:
-
-    static const int send_data_array_len = 64 * 1024; // 64KB
-    unsigned char send_data_static[send_data_array_len] = {'\0'};
-    uint64_t size_of_allocated_send_data_memory = 0;
-    char* send_data_new = NULL;
-    char* send_data = NULL;
 
 // instance variables for receiving data
 private:
     
-    inline static const int static_data_array_length = 64*1024; // received received data static array length 64KB
-    char data_array_static[static_data_array_length] = {'\0'}; // static array for holding received data
-    char* data_array_new = NULL;
-    char* data_array = data_array_static;
-    char* cursor = data_array; // this is used to keep track of and arrange fragmented messages in order
-    uint64_t size_of_allocated_data_memory = 0L;
-    uint64_t length_of_array = 0L;
+    // we declare our meta data array, our meta data array is declared large enough to hold the metadata for our max concurrent streams
+    meta_data metadata[MAX_CONCURRENT_STREAMS];
+
+    static constexpr int STATIC_ARRAY_SIZE = 4 * 1024; // we set our static data array size to 4KB
+    static constexpr int NUM_OF_STATIC_ARRAYS = 32; // we set our number of static arrays. any meta data with array index greater than num of static arrays - 1 was declared off the heap
+    char static_array[NUM_OF_STATIC_ARRAYS][STATIC_ARRAY_SIZE];
+
+// acquire & release functions for acquiring the next free static array
+private:
+
+    // we use the free mask to keep track of the free arrays in our static arrays for receiving stream data
+    uint32_t free_mask = 0xFFFFFFFF;
+
+    int acquire(){
+
+        // the builtin ctz function is undefined when passed a parameter of 0 so we first check that the free mask isn't 0
+        if(free_mask == 0) return -1;
+
+        // we fetch the lowest free bit in our bit mask
+        int slot = __builtin_ctz(free_mask);
+
+        // we mark the acquired slot as in use
+        free_mask &= ~(1 << slot);
+
+        return slot;
+
+    }
+
+    int release(int slot){
+
+        // we mark the supplied slot as free
+        free_mask |= (1 << slot);
+    }
 
 // http methods
 public:
