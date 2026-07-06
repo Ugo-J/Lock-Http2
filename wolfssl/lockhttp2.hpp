@@ -1104,8 +1104,11 @@ int lock_http2_client_nb::handle_stream_close(int32_t stream_id, uint32_t error_
         // we null terminate our received data
         *(stream_metadata->cursor) = '\0';
 
-        // since this is the end of our stream we call our recv data function
-        
+        // since this is the end of our stream we call our recv data function - our data length is gotten by cursor - data array
+        recv_data(stream_metadata->data_array, stream_metadata->cursor - stream_metadata->data_array, stream_metadata->array_size, stream_metadata->user_id);
+
+        // now we release the data array we used for this stream, the data array slot is stored in the array index variable of the stream metadata
+        release(stream_metadata->array_index);
 
     }
     else{
