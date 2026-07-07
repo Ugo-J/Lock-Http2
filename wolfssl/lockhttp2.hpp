@@ -2416,16 +2416,25 @@ void lock_http2_client_nb::release(int slot){
 
 }
 
-char* lock_http2_client_nb::set_header(char* name, char* value){
+int lock_http2_client_nb::set_header(char* name, char* value){
 
-    // we check if the name parameter is null if it is we return immediately - the value parameter on the other hand permits a null value - a null value parameter just creates the header entry and returns a pointer to the value buffer where the caller can manually update the value
-    if(name == nullptr) return nullptr;
+    // we check if the name parameter is null if it is we return immediately - the value parameter on the other hand permits a null value - a null value parameter just creates the header entry and returns the int index the application can pass to update header to update the header in place
+    if(name == nullptr) return -1;
 
     // we get the length of the header name
     int name_len = strlen(name);
 
     // we get the length of the header value
     int value_len = (value != nullptr) ? strlen(value) : 0;
+
+    // we first check that our header name length is not longer than our header name array length
+    if(name_len > MAX_HEADER_ITEM_LENGTH - 1) return -1;
+
+    // array for holding our lower case name
+    char lowercase_name[MAX_HEADER_ITEM_LENGTH];
+
+    // we use a lambda to convert our name parameter to lower case
+    [](char* out, const char* in){ while((*out++ = tolower(*in++))); }(lowercase_name, name);
 
     // we first check if this header exists already on our headers array, if it does we just update its value
     for(int i = 0; i<num_of_headers; i++){
@@ -2434,13 +2443,13 @@ char* lock_http2_client_nb::set_header(char* name, char* value){
         if(hdrs[i].namelen == static_cast<size_t>(name_len)){
 
             // now we compare the characters using memcmp - h_name[i] is the char array whose pointer is sored in hdrs[i].name so we compare the name directly
-            if(!memcmp(name, h_name[i], name_len)){
+            if(!memcmp(lowercase_name, h_name[i], name_len)){
 
                 // we check if the supplied value was not null before we copy the value
                 if(value != nullptr){
 
                     // we check if the header would fit into our header value location - we compare directly to avoid the use of strncpy
-                    if(value_len > MAX_HEADER_ITEM_LENGTH - 1) return nullptr;
+                    if(value_len > MAX_HEADER_ITEM_LENGTH - 1) return -1;
 
                     // we copy this value into our headers array
                     strcpy(h_value[i], value);
@@ -2448,14 +2457,14 @@ char* lock_http2_client_nb::set_header(char* name, char* value){
                     // our namelen size remains the same so we only update our valuelen size
                     hdrs[i].valuelen = static_cast<size_t>(value_len);
 
-                    // our nghttp header value pointer is already pointing at this location so we don't update it
+                    // our nghttp2 header value pointer is already pointing at this location so we don't update it
 
                     // our nghttp2 header flags remain no copy for name and value so we leave as is
 
                 }
 
-                // we return the pointer to this header value in the h_value array
-                return h_value[i];
+                // we return the index to this header value in the h_value array
+                return i;
 
                 // we don't increment our num of headers because this header was already present in our headers array
 
@@ -2466,15 +2475,14 @@ char* lock_http2_client_nb::set_header(char* name, char* value){
     }
 
     // getting here this header isn't already in our headers array so befor we enter it we first check if there is enough header space
-    if(num_of_headers >= MAX_NUM_OF_HEADERS) return nullptr;
+    if(num_of_headers >= MAX_NUM_OF_HEADERS) return -1;
 
     // getting here we still have empty slots in our headers array
 
-    // we copy our header name - we first check that our header name length is not longer than our header name array length
-    if(name_len > MAX_HEADER_ITEM_LENGTH - 1) return nullptr;
+    // we don't check the header name length again as we already checked it before converting it to lower case at the start of this function
 
     // we copy our header name
-    strcpy(h_name[num_of_headers], name);
+    strcpy(h_name[num_of_headers], lowercase_name);
 
     // we point our nghttp2 hdrs name pointer to our header name
     hdrs[num_of_headers].name = reinterpret_cast<uint8_t*>(h_name[num_of_headers]);
@@ -2486,7 +2494,7 @@ char* lock_http2_client_nb::set_header(char* name, char* value){
     if(value != nullptr){
 
         // we copy our header value - we first check that our header value length is not longer than our header value array length
-        if(value_len > MAX_HEADER_ITEM_LENGTH - 1) return nullptr;
+        if(value_len > MAX_HEADER_ITEM_LENGTH - 1) return -1;
 
         // we copy our header value
         strcpy(h_value[num_of_headers], value);
@@ -2502,12 +2510,19 @@ char* lock_http2_client_nb::set_header(char* name, char* value){
     // we set our nghttp2 hdrs flag to no copy to ensure that the headers are not copied internally
     hdrs[num_of_headers].flags = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
 
-    // we return the pointer to our header value and increment our num of headers in the same line - the pointer we return is the buffer the application can update to change the value of the header directly without calling set header
-    return h_value[num_of_headers++];
+    // we return our header index and increment our num of headers in the same line
+    return num_of_headers++;
 
 }
 
 char* lock_http2_client_nb::get_header(char* name){
+
+
+    return nullptr;
+
+}
+
+char* lock_http2_client_nb::update_header(int idx){
 
 
     return nullptr;

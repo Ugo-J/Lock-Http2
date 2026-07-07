@@ -194,10 +194,13 @@ private:
 public:
 
     // function to set a header
-    char* set_header(char* name, char* value);
+    int set_header(char* name, char* value);
 
     // function to return the value of a header
     char* get_header(char* name);
+
+    // function to update an existing header value - this updates the header value by pointer only and does no copy
+    char* update_header(int idx);
 
     // function to clear a header from the header list
     int clear_header(char* name);
@@ -205,5 +208,10 @@ public:
     // function to clear all user defined headers leaving only the http2 pseudo headers
     int clear_headers();
 
+// function to clear all headers
+private:
+
+    // this function clears all headers including pseudo headers
+    int clear_all_headers();
     
 };
