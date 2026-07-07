@@ -2416,6 +2416,118 @@ void lock_http2_client_nb::release(int slot){
 
 }
 
+char* lock_http2_client_nb::set_header(char* name, char* value){
+
+    // we check if the name parameter is null if it is we return immediately - the value parameter on the other hand permits a null value - a null value parameter just creates the header entry and returns a pointer to the value buffer where the caller can manually update the value
+    if(name == nullptr) return nullptr;
+
+    // we get the length of the header name
+    int name_len = strlen(name);
+
+    // we get the length of the header value
+    int value_len = (value != nullptr) ? strlen(value) : 0;
+
+    // we first check if this header exists already on our headers array, if it does we just update its value
+    for(int i = 0; i<num_of_headers; i++){
+
+        // we compare the headers based on name length first
+        if(hdrs[i].namelen == static_cast<size_t>(name_len)){
+
+            // now we compare the characters using memcmp - h_name[i] is the char array whose pointer is sored in hdrs[i].name so we compare the name directly
+            if(!memcmp(name, h_name[i], name_len)){
+
+                // we check if the supplied value was not null before we copy the value
+                if(value != nullptr){
+
+                    // we check if the header would fit into our header value location - we compare directly to avoid the use of strncpy
+                    if(value_len > MAX_HEADER_ITEM_LENGTH - 1) return nullptr;
+
+                    // we copy this value into our headers array
+                    strcpy(h_value[i], value);
+
+                    // our namelen size remains the same so we only update our valuelen size
+                    hdrs[i].valuelen = static_cast<size_t>(value_len);
+
+                    // our nghttp header value pointer is already pointing at this location so we don't update it
+
+                    // our nghttp2 header flags remain no copy for name and value so we leave as is
+
+                }
+
+                // we return the pointer to this header value in the h_value array
+                return h_value[i];
+
+                // we don't increment our num of headers because this header was already present in our headers array
+
+            }
+
+        }
+
+    }
+
+    // getting here this header isn't already in our headers array so befor we enter it we first check if there is enough header space
+    if(num_of_headers >= MAX_NUM_OF_HEADERS) return nullptr;
+
+    // getting here we still have empty slots in our headers array
+
+    // we copy our header name - we first check that our header name length is not longer than our header name array length
+    if(name_len > MAX_HEADER_ITEM_LENGTH - 1) return nullptr;
+
+    // we copy our header name
+    strcpy(h_name[num_of_headers], name);
+
+    // we point our nghttp2 hdrs name pointer to our header name
+    hdrs[num_of_headers].name = reinterpret_cast<uint8_t*>(h_name[num_of_headers]);
+
+    // we update our namelen variable in our nghttp2 header struct
+    hdrs[num_of_headers].namelen = static_cast<size_t>(name_len);
+
+    // we only copy our value to our h value array if the supplied value is not null
+    if(value != nullptr){
+
+        // we copy our header value - we first check that our header value length is not longer than our header value array length
+        if(value_len > MAX_HEADER_ITEM_LENGTH - 1) return nullptr;
+
+        // we copy our header value
+        strcpy(h_value[num_of_headers], value);
+
+    }
+
+    // we point our nghttp2 hdrs value pointer to our header value
+    hdrs[num_of_headers].value = reinterpret_cast<uint8_t*>(h_value[num_of_headers]);
+
+    // we update our valuelen variable in our nghttp2 header struct
+    hdrs[num_of_headers].valuelen = static_cast<size_t>(value_len);
+
+    // we set our nghttp2 hdrs flag to no copy to ensure that the headers are not copied internally
+    hdrs[num_of_headers].flags = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
+
+    // we return the pointer to our header value and increment our num of headers in the same line - the pointer we return is the buffer the application can update to change the value of the header directly without calling set header
+    return h_value[num_of_headers++];
+
+}
+
+char* lock_http2_client_nb::get_header(char* name){
+
+
+    return nullptr;
+
+}
+
+int lock_http2_client_nb::clear_header(char* name){
+
+
+    return 0;
+
+}
+
+int lock_http2_client_nb::clear_headers(){
+
+
+    return 0;
+
+}
+
 int lock_http2_client_nb::reset(){
 
     if(!c_ssl) return 0;

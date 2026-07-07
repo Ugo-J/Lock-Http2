@@ -193,6 +193,17 @@ private:
 // functions for managing http headers
 public:
 
+    // function to set a header
+    char* set_header(char* name, char* value);
+
+    // function to return the value of a header
+    char* get_header(char* name);
+
+    // function to clear a header from the header list
+    int clear_header(char* name);
+
+    // function to clear all user defined headers leaving only the http2 pseudo headers
+    int clear_headers();
 
     
 };
