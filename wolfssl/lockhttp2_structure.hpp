@@ -203,7 +203,7 @@ public:
     char* update_header(char* value, int index);
 
     // function to clear a header from the header list
-    int clear_header(char* name);
+    int clear_header(int index);
 
     // function to clear all user defined headers leaving only the http2 pseudo headers
     int clear_headers();

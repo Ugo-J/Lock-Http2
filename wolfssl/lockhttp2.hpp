@@ -2560,8 +2560,8 @@ char* lock_http2_client_nb::update_header(char* value, int index){
     // return nullptr if the supplied value is null
     if(value == nullptr) return nullptr;
 
-    // return nullptr if the supplied index is invalid
-    if(index < 0 || index >= MAX_NUM_OF_HEADERS) return nullptr;
+    // return nullptr if the supplied index is invalid or empty
+    if(index < 0 || index >= num_of_headers) return nullptr;
 
     // we update the nghttp2 value pointer for this header to the supplied value
     hdrs[index].value = reinterpret_cast<uint8_t*>(value);
@@ -2574,8 +2574,39 @@ char* lock_http2_client_nb::update_header(char* value, int index){
 
 }
 
-int lock_http2_client_nb::clear_header(char* name){
+int lock_http2_client_nb::clear_header(int index){
 
+    // this function clears a single header from the header list
+
+    // we check if the supplied index is valid and non empty
+    if(index < 0 || index >= num_of_headers) return -1;
+
+    int last_index = num_of_headers - 1;
+
+    // we check if this is the last header in our header array or not
+    if(index < last_index){
+
+        // getting here this isn't the last header so we move the headers after this forward by copying the last entries
+
+        // we copy the last header name into this location
+        std::memcpy(h_name[index], h_name[last_index], MAX_HEADER_ITEM_LENGTH);
+
+        // we copy the last header value to this index location
+        std::memcpy(h_value[index], h_value[last_index], MAX_HEADER_ITEM_LENGTH);
+
+        // we update our hdrs array
+        hdrs[index] = hdrs[last_index];
+
+        // we reassign the name pointer of our hdrs entry to point to its new name location
+        hdrs[index].name = reinterpret_cast<uint8_t*>(h_name[index]);
+
+        // now we check the hdrs value pointer, we only reassign it if it is pointing to its corresponding location in the h_value array, if it is pointing to an external array by virtue of calling update header on it we don't bother updating it because the location it points to would still be valid for its context
+        if(hdrs[index].value == reinterpret_cast<uint8_t*>(h_value[last_index])) hdrs[index].value = reinterpret_cast<uint8_t*>(h_value[index]);
+
+    }
+
+    // we decrement our num_of_headers
+    num_of_headers--;
 
     return 0;
 
