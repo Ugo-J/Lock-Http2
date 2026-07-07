@@ -2474,7 +2474,7 @@ int lock_http2_client_nb::set_header(char* name, char* value){
 
     }
 
-    // getting here this header isn't already in our headers array so befor we enter it we first check if there is enough header space
+    // getting here this header isn't already in our headers array so before we enter it we first check if there is enough header space
     if(num_of_headers >= MAX_NUM_OF_HEADERS) return -1;
 
     // getting here we still have empty slots in our headers array
@@ -2517,7 +2517,40 @@ int lock_http2_client_nb::set_header(char* name, char* value){
 
 char* lock_http2_client_nb::get_header(char* name){
 
+    // we check if the supplied name is a nullptr, if so we return immediately
+    if(name == nullptr) return -1;
 
+    // we get the length of the header name
+    int name_len = strlen(name);
+
+    // we first check that our header name length is not longer than our header name array length
+    if(name_len > MAX_HEADER_ITEM_LENGTH - 1) return nullptr;
+
+    // array for holding our lower case name
+    char lowercase_name[MAX_HEADER_ITEM_LENGTH];
+
+    // we use a lambda to convert our name parameter to lower case
+    [](char* out, const char* in){ while((*out++ = tolower(*in++))); }(lowercase_name, name);
+
+    // we check for this header in our headers array
+    for(int i = 0; i<num_of_headers; i++){
+
+        // we compare the headers based on name length first
+        if(hdrs[i].namelen == static_cast<size_t>(name_len)){
+
+            // now we compare the characters using memcmp - h_name[i] is the char array whose pointer is sored in hdrs[i].name so we compare the name directly
+            if(!memcmp(lowercase_name, h_name[i], name_len)){
+
+                // we return the header value pointer of this header
+                return h_value[i];
+
+            }
+
+        }
+
+    }
+
+    // getting here this header was not found in our headers array so we return
     return nullptr;
 
 }
