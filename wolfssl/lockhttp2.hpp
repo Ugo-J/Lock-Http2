@@ -2589,10 +2589,10 @@ int lock_http2_client_nb::clear_header(int index){
         // getting here this isn't the last header so we move the headers after this forward by copying the last entries
 
         // we copy the last header name into this location
-        std::memcpy(h_name[index], h_name[last_index], MAX_HEADER_ITEM_LENGTH);
+        strcpy(h_name[index], h_name[last_index]);
 
         // we copy the last header value to this index location
-        std::memcpy(h_value[index], h_value[last_index], MAX_HEADER_ITEM_LENGTH);
+        strcpy(h_value[index], h_value[last_index]);
 
         // we update our hdrs array
         hdrs[index] = hdrs[last_index];
@@ -2614,6 +2614,17 @@ int lock_http2_client_nb::clear_header(int index){
 
 int lock_http2_client_nb::clear_headers(){
 
+    // this function clears all user supplied headers leaving only the pseudo headers, to do this we just set our um of headers to 4 which is the 4 pseudo headers we use: path, method, scheme and authority
+    num_of_headers = 4;
+
+    return 0;
+
+}
+
+int lock_http2_client_nb::clear_all_headers(){
+
+    // this is an internal function that clears all headers including pseudo headers by setting our num of headers to 0
+    num_of_headers = 0;
 
     return 0;
 
