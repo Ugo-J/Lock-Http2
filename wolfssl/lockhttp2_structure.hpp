@@ -168,5 +168,31 @@ public:
 private:
 
     static constexpr const char* methods[] = {"GET", "POST", "PUT", "PATCH", "DELETE"};
+
+// variables for managing http headers
+private:
+
+    // this variable holds the maximum number of headers we can handle in a http request
+    static constexpr int MAX_NUM_OF_HEADERS = 64;
+
+    // this variable holds the maximum length of a header item - name or value - that we can handle
+    static constexpr int MAX_HEADER_ITEM_LENGTH = 128;
+
+    // this array holds all our header names
+    char h_name[MAX_NUM_OF_HEADERS][MAX_HEADER_ITEM_LENGTH];
+
+    // this array holds all our header values
+    char h_value[MAX_NUM_OF_HEADERS][MAX_HEADER_ITEM_LENGTH];
+
+    // this is the struct that holds the headers we pass to our submit request, the nghttp2_nv struct has the following fields uint8_t* name, uint8_t* value, size_t namelen, size_t valuelen, uint8_t flags
+    nghttp2_nv hdrs[MAX_NUM_OF_HEADERS];
+
+    // this variables holds the number of valid headers in our hdrs struct to pass to our submit request
+    int num_of_headers = 0;
+
+// functions for managing http headers
+public:
+
+
     
 };

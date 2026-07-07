@@ -1231,8 +1231,8 @@ bool lock_http2_client_nb::send(std::string_view path, char* payload_data, int m
         // we construct our http headers
         nghttp2_nv hdrs[] = {
         { (uint8_t*)":method", (uint8_t*)methods[method], 7, strlen(methods[method]), NGHTTP2_NV_FLAG_NONE },
-        { (uint8_t*)":scheme", (uint8_t*)"https", 7, 5, NGHTTP2_NV_FLAG_NONE },
         { (uint8_t*)":path", (uint8_t*)path.data(), 5, path.size(), NGHTTP2_NV_FLAG_NONE },
+        { (uint8_t*)":scheme", (uint8_t*)"https", 7, 5, NGHTTP2_NV_FLAG_NONE },
         { (uint8_t*)":authority", (uint8_t*)c_host, 10, strlen(c_host), NGHTTP2_NV_FLAG_NONE }
         };
 
