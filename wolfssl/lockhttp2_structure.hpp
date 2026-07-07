@@ -200,7 +200,7 @@ public:
     char* get_header(char* name);
 
     // function to update an existing header value - this updates the header value by pointer only and does no copy
-    char* update_header(int idx);
+    char* update_header(char* value, int index);
 
     // function to clear a header from the header list
     int clear_header(char* name);

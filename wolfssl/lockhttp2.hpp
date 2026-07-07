@@ -2518,7 +2518,7 @@ int lock_http2_client_nb::set_header(char* name, char* value){
 char* lock_http2_client_nb::get_header(char* name){
 
     // we check if the supplied name is a nullptr, if so we return immediately
-    if(name == nullptr) return -1;
+    if(name == nullptr) return nullptr;
 
     // we get the length of the header name
     int name_len = strlen(name);
@@ -2542,7 +2542,7 @@ char* lock_http2_client_nb::get_header(char* name){
             if(!memcmp(lowercase_name, h_name[i], name_len)){
 
                 // we return the header value pointer of this header
-                return h_value[i];
+                return reinterpret_cast<char*>(hdrs[i].value);
 
             }
 
@@ -2555,10 +2555,22 @@ char* lock_http2_client_nb::get_header(char* name){
 
 }
 
-char* lock_http2_client_nb::update_header(int idx){
+char* lock_http2_client_nb::update_header(char* value, int index){
 
+    // return nullptr if the supplied value is null
+    if(value == nullptr) return nullptr;
 
-    return nullptr;
+    // return nullptr if the supplied index is invalid
+    if(index < 0 || index >= MAX_NUM_OF_HEADERS) return nullptr;
+
+    // we update the nghttp2 value pointer for this header to the supplied value
+    hdrs[index].value = reinterpret_cast<uint8_t*>(value);
+
+    // we update the valuelen for this header
+    hdrs[index].valuelen = static_cast<size_t>(strlen(value));
+
+    // we return the value pointer to indicate success
+    return value;
 
 }
 
