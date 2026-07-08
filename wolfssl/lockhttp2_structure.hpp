@@ -17,7 +17,7 @@ public:
     
     // public functions
     bool ping(); // ping function
-    bool send(std::string_view path, char* payload, int method, int id); // send function
+    bool send(char* path, char* payload, int method, int id); // send function
     bool connect(std::string_view); // function to connect to a url
     bool interface_connect(std::string_view url, in_addr* interface_address, char* interface_name); // connect function that binds to a particular interface before connection
     bool close(); // closes an open connection of a lock_http2_client instance
@@ -190,11 +190,17 @@ private:
     // this variables holds the number of valid headers in our hdrs struct to pass to our submit request
     int num_of_headers = 0;
 
+    // this variable stores the index returned when we call the set header on our method header so we can update our method directly using update header function
+    int method_index = -1;
+
+    // this variable stores the index returned when we call the set header on our path header so we can update our path directly using update header function
+    int path_index = -1;
+
 // functions for managing http headers
 public:
 
     // function to set a header
-    int set_header(char* name, char* value);
+    int set_header(const char* name, char* value);
 
     // function to return the value of a header
     char* get_header(char* name);

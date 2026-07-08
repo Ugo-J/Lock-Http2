@@ -1221,20 +1221,20 @@ inline bool lock_http2_client_nb::clear(){ // clear the error flag of a lock cli
     
 }
 
-bool lock_http2_client_nb::send(std::string_view path, char* payload_data, int method, int id){ // sends data passed as parameter along an established http connection
+bool lock_http2_client_nb::send(char* path, char* payload_data, int method, int id){ // sends data passed as parameter along an established http connection
 
     if(!error){ // only continue if no error
     
         // we check that the supplied method int is within the valid range - we return true to indicate that this send failed but we don't set the error flag to true
         if(method < 0 || method > std::size(methods) - 1) return true;
 
-        // we construct our http headers
-        nghttp2_nv hdrs[] = {
-        { (uint8_t*)":method", (uint8_t*)methods[method], 7, strlen(methods[method]), NGHTTP2_NV_FLAG_NONE },
-        { (uint8_t*)":path", (uint8_t*)path.data(), 5, path.size(), NGHTTP2_NV_FLAG_NONE },
-        { (uint8_t*)":scheme", (uint8_t*)"https", 7, 5, NGHTTP2_NV_FLAG_NONE },
-        { (uint8_t*)":authority", (uint8_t*)c_host, 10, strlen(c_host), NGHTTP2_NV_FLAG_NONE }
-        };
+        // we update our method pseudo header with the supplied method
+        update_header(const_cast<char*>(methods[method]), method_index);
+
+        // we update our path pseudo header with the supplied path
+        update_header(path, path_index);
+
+        // our scheme and authority pseudo headers remain constant so we don't update it
 
         // we setup ad initialise our data provider
         nghttp2_data_provider2 provider;
@@ -1260,7 +1260,7 @@ bool lock_http2_client_nb::send(std::string_view path, char* payload_data, int m
         metadata[slot].user_id = id;
 
         // we submit our request and fetch the stream_id - we pas our metadata slot as a void pointer to this request
-        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, std::size(hdrs), (payload_data != nullptr) ? &provider : nullptr, static_cast<void*>(&metadata[slot]));
+        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, num_of_headers, (payload_data != nullptr) ? &provider : nullptr, static_cast<void*>(&metadata[slot]));
 
         if(stream_id < 0){
 
@@ -1775,7 +1775,32 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
 
                             strcpy(error_buffer, "h2 protocol was not negotiated");
 
-                            error = 1;
+                            error = true;
+
+                            // we disconnect from the server
+                            reset();
+                        }
+
+                        // only continue if no error
+                        if(!error){
+
+                            // we set our http headers
+
+                            // we first clear all previous headers
+                            clear_all_headers();
+
+                            // we set our method pseudo header with nullptr value so we can get the index to update it with
+                            method_index = set_header(":method", nullptr);
+
+                            // we set our path pseudo header with nullptr value so we can get the index to update it with
+                            path_index = set_header(":path", nullptr);
+
+                            // we set our scheme pseudo header - this doesn't change after connecting to the server
+                            set_header(":scheme", const_cast<char*>("https"));
+
+                            // we set our authority pseudo header - this also doesn't change after connecting to the server
+                            set_header(":authority", c_host);
+
                         }
 
                     }
@@ -2416,7 +2441,7 @@ void lock_http2_client_nb::release(int slot){
 
 }
 
-int lock_http2_client_nb::set_header(char* name, char* value){
+int lock_http2_client_nb::set_header(const char* name, char* value){
 
     // we check if the name parameter is null if it is we return immediately - the value parameter on the other hand permits a null value - a null value parameter just creates the header entry and returns the int index the application can pass to update header to update the header in place
     if(name == nullptr) return -1;
