@@ -1016,20 +1016,15 @@ long lock_http2_client_nb::send_body_provider_cb(nghttp2_session *session, int32
 int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data){
 
     lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
-    return client->handle_header(frame, name, namelen, value, valuelen, flags);
+
+    // we fetch our stream data for this request
+    meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, frame->hd.stream_id));
+
+    return client->default_header_receive(reinterpret_cast<const char*>(name), namelen, reinterpret_cast<const char*>(value), valuelen, (stream_metadata != nullptr) ? stream_metadata->user_id : -1);
 
 }
 
 int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
-
-    // we retrieve the custom id we attached during submit
-    void* stream_data = nghttp2_session_get_stream_user_data(session, frame->hd.stream_id);
-
-    // we cast our stream data id to a uintptr_t so we can safely convert it to an int
-    uintptr_t custom_id = reinterpret_cast<uintptr_t>(stream_data);
-        
-    // we cast our custom id to a int to get the int id supplied during the sed call for this request
-    int user_req_id = static_cast<int>(custom_id);
 
     // we use this switch case to handle different header types
     switch(frame->hd.type){
@@ -1058,16 +1053,9 @@ int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
     return 0;
 }
 
-int lock_http2_client_nb::handle_header(const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags){
+int lock_http2_client_nb::default_header_receive(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id){
 
-    if(frame->hd.type == NGHTTP2_HEADERS){
-
-        std::string_view key(reinterpret_cast<const char*>(name), namelen);
-        std::string_view val(reinterpret_cast<const char*>(value), valuelen);
-        
-        std::cout<<"[Stream "<<frame->hd.stream_id<<"] Header -> "<<key<<": "<<val<<"\n";
-        
-    }
+    // std::cout<<"[User Id "<<user_id<<"] Header -> "<<name<<": "<<value<<"\n";
 
     return 0;
 

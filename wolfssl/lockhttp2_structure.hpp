@@ -1,4 +1,5 @@
 using lock_function = std::function<int(char*, int, int, int)>;
+using lock_header_function = std::function<int(const char*, size_t, const char*, size_t, int)>;
 
 // non blocking lock client
 class lock_http2_client_nb {
@@ -27,13 +28,19 @@ public:
     bool basic_read();
     bool clear(); // this function is used to clear the error flags of lock clients in open state, error flags of lock clients in closed state can only be cleared by calling the connect function
     inline static int default_receive(char*, int, int, int); // default receive function called by basic read
+    inline static int default_header_receive(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id); // default header receive function called after every received header
     void set_receive_function(lock_function fn);
+    void set_header_receive_function(lock_header_function fn);
 
 private:
 // pointers to receive functions
     
     // receive function pointer
     lock_function recv_data = lock_http2_client_nb::default_receive;
+
+    // header receive function pointer - default function for receiving headers
+    lock_header_function recv_header = lock_http2_client_nb::default_header_receive;
+
     
 // private class functions
 private:
