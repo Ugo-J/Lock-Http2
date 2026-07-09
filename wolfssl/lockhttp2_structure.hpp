@@ -205,6 +205,12 @@ public:
     // function to return the value of a header
     char* get_header(char* name);
 
+    // function to get the pointer to a header value from its index - the index returned from set header
+    char* get_header_ptr(int index);
+
+    // function to update header length after manually copying the header value to its value pointer
+    int update_header_length(int index, int length = -1);
+
     // function to update an existing header value - this updates the header value by pointer only and does no copy
     char* update_header(char* value, int index);
 

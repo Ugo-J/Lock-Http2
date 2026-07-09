@@ -2479,10 +2479,11 @@ int lock_http2_client_nb::set_header(const char* name, char* value){
                     // we copy this value into our headers array
                     strcpy(h_value[i], value);
 
+                    // we update our nghttp2 header value pointer back to this header value location just in case we have used update header to update its value pointer
+                    hdrs[i].value = reinterpret_cast<uint8_t*>(h_value[i]);
+
                     // our namelen size remains the same so we only update our valuelen size
                     hdrs[i].valuelen = static_cast<size_t>(value_len);
-
-                    // our nghttp2 header value pointer is already pointing at this location so we don't update it
 
                     // our nghttp2 header flags remain no copy for name and value so we leave as is
 
@@ -2577,6 +2578,31 @@ char* lock_http2_client_nb::get_header(char* name){
 
     // getting here this header was not found in our headers array so we return
     return nullptr;
+
+}
+
+char* lock_http2_client_nb::get_header_ptr(int index){
+
+    // return nullptr if the supplied index is invalid or empty - this prevents us from updating a header value for a header we are not actively sending with our requests
+    if(index < 0 || index >= num_of_headers) return nullptr;
+
+    // we return the internal header pointer
+    return h_value[index];
+
+}
+
+int lock_http2_client_nb::update_header_length(int index, int length){
+
+    // return nullptr if the supplied index is invalid or empty - this prevents us from updating a header value for a header we are not actively sending with our requests
+    if(index < 0 || index >= num_of_headers) return -1;
+
+    // we update our hdrs value length or compute it from the corresponding h_value if it is not supplied
+    hdrs[index].valuelen = (length >= 0) ? static_cast<size_t>(length) : strlen(h_value[index]);
+
+    // we point our nghttp hdrs value for this index to our h_value index just incase the value pointer has been reassigned by calling update_header
+    hdrs[index].value = reinterpret_cast<uint8_t*>(h_value[index]);
+
+    return 0;
 
 }
 
