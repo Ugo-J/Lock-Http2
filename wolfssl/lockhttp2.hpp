@@ -164,7 +164,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
                     
                 
                 }
-                else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not 
+                else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not
                     
                     if(c_url_new == NULL){ // memory has not yet been allocated
                         
@@ -566,320 +566,98 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
         
         if(url.compare(0, 8, "https://") == 0){
         
-            int protocol_prefix_len = strlen("wss://");
+            int protocol_prefix_len = strlen("https://");
 
-            // we fetch the url length without the wss:// prefix and any path appended to the url, we do this by finding the next '/' character after the initial wss://
-            size_t base_url_end_index = url.find('/', protocol_prefix_len);
+            int base_url_length = url.size() - protocol_prefix_len; // saves the length of the url without the https:// prefix
+            
+            // size of required memory in bytes to store the base url
+            int req_mem = base_url_length;
 
-            int base_url_length = (base_url_end_index != std::string_view::npos) ? (int)base_url_end_index - protocol_prefix_len : url.size() - protocol_prefix_len; // saves the length of the url without the wss:// prefix and the path if any
+            // we create our ssl object
+            c_ssl = wolfSSL_new(ssl_ctx);
+        
+            if(!error){ // the constructor continues only if there was no error fetching the ssl pointer
 
-            // size of required memory in bytes to store the base url and the port number if it would be appended
-            int req_mem = base_url_length + 5; // we add an extra 5 bytes to the base url length to accomodate for the chance that this url was supplied without a port number so we have enough room to append port :443 to the base url
-            
-            // URL copy 
-            if(req_mem < url_static_array_length){ // static memory large enough
-            
-                url.copy(c_url_static, base_url_length, protocol_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the static character array
-            
-                c_url_static[base_url_length] = '\0'; // null-terminate the string
-            
-                c_url = c_url_static;
-            
-            }
-            else if(req_mem < size_of_allocated_url_memory){ // store in already allocated dynamic memory
-            
-                url.copy(c_url_new, base_url_length, protocol_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the already allocated character array
-            
-                c_url_new[base_url_length] = '\0'; // null-terminate the string
-            
-                c_url = c_url_new;
+                // URL copy 
+                if(req_mem < url_static_array_length){ // static memory large enough
                 
-            
-            }
-            else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not
+                    url.copy(c_url_static, base_url_length, protocol_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the static character array
                 
-                if(c_url_new == NULL){ // memory has not yet been allocated
-                    
-                    c_url_new = new(std::nothrow) char[req_mem]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+                    c_url_static[base_url_length] = '\0'; // null-terminate the string
                 
-                    if(c_url_new == NULL){
-                        
-                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
-                        
-                        error = true;
-                        
-                    }
-                    else{
-                        
-                        size_of_allocated_url_memory = req_mem;    
-                            
-                        url.copy(c_url_new, base_url_length, protocol_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
-            
-                        c_url_new[base_url_length] = '\0';
-            
-                        c_url = c_url_new;
-                    
-                    }
-            
-                }
-                else{ // memory has been allocated but still isn't large enough
-                    
-                    delete [] c_url_new; // delete the already allocated memory
-                    
-                    // heap memory allocation for urls larger than the static array length
-                    c_url_new = new(std::nothrow) char[req_mem]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
-                
-                    
-                    if(c_url_new == NULL){
-                        
-                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
-                        
-                        error = true;
-                        
-                    }
-                    else{
-                        
-                        size_of_allocated_url_memory = req_mem;    
-                            
-                        url.copy(c_url_new, base_url_length, protocol_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
-                
-                        c_url_new[base_url_length] = '\0';
-
-                        c_url = c_url_new;
-                    
-                    }
+                    c_url = c_url_static;
                 
                 }
-
-            }
-
-            if(!error){
-
-                // we check if the supplied url has the port number appended if not we append it
-                if(strchr(c_url, ':') == NULL){
-                    strcat(c_url, ":443"); // we use strcat here because the array length check already checks that we have enough space in the array to accomodate for the port number
-                }
-
-                // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
-                size_t host_name_end_index = url.find_first_of(":/", protocol_prefix_len); // we start searching at the protocol_prefix_len - index 6 to bypass the wss:// protocol prefix length
+                else if(req_mem < size_of_allocated_url_memory){ // store in already allocated dynamic memory
+                    
+                    url.copy(c_url_new, base_url_length, protocol_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the already allocated character array
                 
-                int host_name_len = (host_name_end_index == std::string_view::npos) ? url.size() - protocol_prefix_len : (int)host_name_end_index - protocol_prefix_len;
-
-                if( host_name_len < host_static_array_length ){ // static array is large enough
+                    c_url_new[base_url_length] = '\0'; // null-terminate the string
                 
-                    url.copy(c_host_static, host_name_len, protocol_prefix_len);
-                
-                    c_host_static[host_name_len] = '\0';
-                
-                    c_host = c_host_static;
+                    c_url = c_url_new;
+                    
                 
                 }
-                else if( host_name_len < size_of_allocated_host_memory){ // dynamic memory is large enough
+                else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not 
                     
-                    url.copy(c_host_new, host_name_len, protocol_prefix_len);
-                
-                    c_host_new[host_name_len] = '\0';
-                
-                    c_host = c_host_new;
-                    
-                }
-                else{ // neither static or already allocated memory is large enough, we test the two possible cases
-                    
-                    if(c_host_new == NULL){ // memory has not been allocated yet 
-                    
-                        c_host_new = new(std::nothrow) char[host_name_len + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
-                
-                
-                        if(c_host_new == NULL){
-                    
-                            strncpy(error_buffer, "Error allocating heap memory for server host name ", error_buffer_array_length);
+                    if(c_url_new == NULL){ // memory has not yet been allocated
                         
-                            error = true;    
+                        c_url_new = new(std::nothrow) char[req_mem]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
                     
-                        }
-                        else{
+                    
+                        if(c_url_new == NULL){
                             
-                            size_of_allocated_host_memory = host_name_len + 1;
+                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                             
-                            url.copy(c_host_new, host_name_len, protocol_prefix_len);
-                
-                            c_host_new[host_name_len] = '\0';
-                
-                            c_host = c_host_new;
-                
-                        }
-                    
-                    }
-                    else{ // memory has been allocated but it still isn't sufficient
-                        
-                        delete [] c_host_new; // delete the previously allocated memory
-                        
-                        c_host_new = new(std::nothrow) char[host_name_len + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
-                
-                
-                        if(c_host_new == NULL){
-                    
-                            strncpy(error_buffer, "Error allocating heap memory for server host name ", error_buffer_array_length);
-                        
-                            error = true;    
-                    
-                        }
-                        else{
-                            
-                            size_of_allocated_host_memory = host_name_len + 1;
-                            
-                            url.copy(c_host_new, host_name_len, protocol_prefix_len);
-                
-                            c_host_new[host_name_len] = '\0';
-                
-                            c_host = c_host_new;
-
-                
-                        }
-                    
-                    }
-                    
-                }
-
-                // we create a local char array to hold the port extracted from the url
-                const int MAX_CHAR_FOR_PORT = 8; // a port number can have a maximum of 5 characters because port numbers are 16 bit integers
-                char c_port[MAX_CHAR_FOR_PORT];
-
-                // since the host_name_end_index already finds the first character out of : and / after the host name we use it to find the port number location if any
-
-                // we first check if the host name end index was either std::string_view::npos or / in which case we know the host wasn't supplied so we store 443 as the host, but if the : character was found then the host was supplied so we just create a sub string view from after the : character to either the / starting the path if supplied, but if not supplied till std::string_view::npos - host_name_end_index - 1 which would be a very large number the copy takes the rest of the url string_view
-                std::string_view port = (host_name_end_index == std::string_view::npos || url[host_name_end_index] == '/') ? "443" : url.substr(host_name_end_index + 1, url.find('/', host_name_end_index) - host_name_end_index - 1);
-
-                // we now copy the derived port into char array
-                int num_of_chars_copied = port.copy(c_port, port.size());
-
-                // we null terminate the c_port array
-                c_port[num_of_chars_copied] = '\0';
-
-                // now we can call the connect to server function that would return the configured socket file descriptor
-                int sockfd = connect_to_server(c_host, c_port, interface_address, interface_name);
-
-                if(!error){ // only continue if no error
-
-                    // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
-                    wolfSSL_set_fd(c_ssl, sockfd);
-
-                    // we set the application layer protocol for our ssl object to http2
-                    wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
-
-                    // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
-                    int len;
-
-                    while((len = wolfSSL_connect(c_ssl)) != WOLFSSL_SUCCESS){
-                        
-                        // we get the error message
-                        int err = wolfSSL_get_error(c_ssl, len);
-
-                        // we check if the wolfssl handle is still expecting a read or a write
-                        if(err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE){
-
-                            continue;
-
-                        }
-                        else{
-
-                            // getting here we got a actual error so we set our error flag
-                            strncpy(error_buffer, "Error performing tls handshake ", error_buffer_array_length);
-                        
                             error = true;
-
-                            // we break out of this loop
-                            break;
-
+                            
                         }
-
-                    }
+                        else{
+                            
+                            size_of_allocated_url_memory = req_mem;    
+                                
+                            url.copy(c_url_new, base_url_length, protocol_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
                 
-                    if(!error){ // only continue if no error
+                            c_url_new[base_url_length] = '\0';
                 
-                        // we fetch the path for this connection
-
-                        // we check if a forward slash was found after the last colon, if none was we connect to the default root path else the forward slash till the end of the url string is the path
-                        std::string_view path = (base_url_end_index != std::string_view::npos) ? url.substr(base_url_end_index) : "/";
-
-                        // copy the channel path parameter into the channel path array
-                        int path_string_len = path.size();
+                            c_url = c_url_new;
                         
-                        if(path_string_len < path_static_array_length){ // we can store the path in the static array if this condition is true
-                            
-                            path.copy(c_path_static, path_string_len); // copy the path into the static array
-                            c_path_static[path_string_len] = '\0'; // null-terminate the array
-                            
-                            c_path = c_path_static;
-                            
                         }
-                        else if(path_string_len < size_of_allocated_path_memory){ // allocated memory is large enough
-                            
-                            path.copy(c_path_new, path_string_len); // copy the path into the allocated array
-                            c_path_new[path_string_len] = '\0'; // null-terminate the array
-                            
-                            c_path = c_path_new;
-                            
-                        }
-                        else{ // neither static or already allocated memory is large enough, we test the two possible cases 
-                            
-                            if(c_path_new == NULL){ //memory has not been allocated yet
-                            
-                                c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
-                            
-                                if(c_path_new == NULL){
-                                
-                                    strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
-                                    
-                                    error = true;
-                                    
-                                }
-                                else{ 
-                                    
-                                    size_of_allocated_path_memory = path_string_len + 1;
-                                    
-                                    path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                            
-                                    c_path_new[path_string_len] = '\0'; // null-terminate the array
-                            
-                                    c_path = c_path_new;
-                            
-                                }
-                                
-                            }
-                            else{ // memory has been allocated but is still not sufficient
-                                
-                                delete [] c_path_new; // delete already allocated memory
-                                
-                                c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
-                            
-                                if(c_path_new == NULL){
-                                
-                                    strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
-                                    
-                                    error = true;
-                                    
-                                }
-                                else{ 
-                                    
-                                    size_of_allocated_path_memory = path_string_len + 1;
-                                    
-                                    path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                            
-                                    c_path_new[path_string_len] = '\0'; // null-terminate the array
-                            
-                                    c_path = c_path_new;
-                            
-                                }
-                                
-                            }
-                            
-                        }
-
-                    }
                 
+                    }
+                    else{ // memory has been allocated but still isn't large enough
+                        
+                        delete [] c_url_new; // delete the already allocated memory
+                        
+                        // heap memory allocation for urls larger than the static array length
+                        c_url_new = new(std::nothrow) char[req_mem]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+                    
+                        
+                        if(c_url_new == NULL){
+                            
+                            strcpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ");
+                            
+                            error = true;
+                            
+                        }
+                        else{
+                            
+                            size_of_allocated_url_memory = req_mem;    
+                                
+                            url.copy(c_url_new, base_url_length, protocol_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
+                    
+                            c_url_new[base_url_length] = '\0';
+
+                            c_url = c_url_new;
+                        
+                        }
+                    
+                    }
+
                 }
+            
             }
+        
         }
         else{ // not a valid/supported http endpoint
             
@@ -887,6 +665,213 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
                     
             error = true;
             
+        }
+        
+        if(!error){ // only continue if no error
+            
+            int search_start_index = 8; // we store the index where we would begin the host name search from, we start searching from after the https:// protocol prefix
+
+            /* // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
+            size_t host_name_end_index = url.find_first_of(":/", search_start_index); // we start searching at the search_start_index - index 8 to bypass the https:// protocol prefix length */
+            
+            int host_name_len = url.size() - search_start_index;
+
+            if(host_name_len < host_static_array_length){ // static array is large enough
+            
+                url.copy(c_host_static, host_name_len, search_start_index);
+            
+                c_host_static[host_name_len] = '\0';
+            
+                c_host = c_host_static;
+            
+            }
+            else if(host_name_len < size_of_allocated_host_memory){ // dynamic memory is large enough
+                
+                url.copy(c_host_new, host_name_len, search_start_index);
+            
+                c_host_new[host_name_len] = '\0';
+            
+                c_host = c_host_new;
+                
+            }
+            else{ // neither static or already allocated memory is large enough, we test the two possible cases
+                
+                if(c_host_new == NULL){ // memory has not been allocated yet 
+                
+                    c_host_new = new(std::nothrow) char[host_name_len + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+            
+            
+                    if(c_host_new == NULL){
+                
+                        strcpy(error_buffer, "Error allocating heap memory for server host name ");
+                    
+                        error = true;    
+                
+                    }
+                    else{
+                        
+                        size_of_allocated_host_memory = host_name_len + 1;
+                        
+                        url.copy(c_host_new, host_name_len, search_start_index);
+            
+                        c_host_new[host_name_len] = '\0';
+            
+                        c_host = c_host_new;
+            
+                    }
+                
+                }
+                else{ // memory has been allocated but it still isn't sufficient
+                    
+                    delete [] c_host_new; // delete the previously allocated memory
+                    
+                    c_host_new = new(std::nothrow) char[host_name_len + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+            
+            
+                    if(c_host_new == NULL){
+                
+                        strcpy(error_buffer, "Error allocating heap memory for server host name ");
+                    
+                        error = true;    
+                
+                    }
+                    else{
+                        
+                        size_of_allocated_host_memory = host_name_len + 1;
+                        
+                        url.copy(c_host_new, host_name_len, search_start_index);
+            
+                        c_host_new[host_name_len] = '\0';
+            
+                        c_host = c_host_new;
+
+            
+                    }
+                
+                }
+                
+            }
+            
+            if(!error){ // only continue if no error
+            
+                // we set the host name we wish to connect to for server name identification(SNI)
+                if(!(c_ssl == NULL)){
+                    
+                    if(!wolfSSL_UseSNI(c_ssl, WOLFSSL_SNI_HOST_NAME, c_host, host_name_len)){
+                    // we test the return value. wolfSSL_UseSNI returns 0 on error and 1 on success
+                        
+                        strcpy(error_buffer, "Error setting up Lock client for SNI TLS extension");
+                            
+                        error = true;
+                    
+                    }
+                    
+                }
+                
+                if(!error){
+                // only continue if no error
+
+                    // we create a local char array to hold the port extracted from the url
+                    const int MAX_CHAR_FOR_PORT = 8; // a port number can have a maximum of 5 characters because port numbers are 16 bit integers
+                    char c_port[MAX_CHAR_FOR_PORT];
+
+                    // we set our port number to 443 as this is a https request
+                    std::string_view port = "443";
+
+                    // we now copy the derived port into char array
+                    int num_of_chars_copied = port.copy(c_port, port.size());
+
+                    // we null terminate the c_port array
+                    c_port[num_of_chars_copied] = '\0';
+
+                    // we call our connect to server function with the interface parameters
+                    int sockfd = connect_to_server(c_host, c_port, interface_address, interface_name);
+                    
+                    if(!error){ // only continue if no error
+
+                        // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
+                        wolfSSL_set_fd(c_ssl, sockfd);
+
+                        // we set the application layer protocol for our ssl object to http2
+                        wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
+
+                        // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
+                        int len;
+
+                        while((len = wolfSSL_connect(c_ssl)) != WOLFSSL_SUCCESS){
+                            
+                            // we get the error message
+                            int err = wolfSSL_get_error(c_ssl, len);
+
+                            // we check if the wolfssl handle is still expecting a read or a write
+                            if(err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE){
+
+                                continue;
+
+                            }
+                            else{
+
+                                // getting here we got a actual error so we set our error flag
+                                strcpy(error_buffer, "Error performing tls handshake ");
+
+                                // we concatenate the wolfssl error
+                                wolfSSL_ERR_error_string(err, error_buffer + strlen(error_buffer));
+                            
+                                error = true;
+
+                                // we break out of this loop
+                                break;
+
+                            }
+
+                        }
+                    
+                        if(!error){ // only continue if no error
+                    
+                            // we check if h2 protocol was negotiated
+                            char* protocol = nullptr;
+                            unsigned short protocol_len = 0;
+
+                            // we call wolfssl get alpn protocol to check the negotiated protocol
+                            wolfSSL_ALPN_GetProtocol(c_ssl, &protocol, &protocol_len);
+
+                            if(protocol_len != 2 || memcmp(protocol, "h2", 2) != 0){
+
+                                strcpy(error_buffer, "h2 protocol was not negotiated");
+
+                                error = true;
+
+                                // we disconnect from the server
+                                reset();
+                            }
+
+                            // only continue if no error
+                            if(!error){
+
+                                // we set our http headers
+
+                                // we set our method pseudo header with nullptr value so we can get the index to update it with
+                                method_index = set_header(":method", nullptr);
+
+                                // we set our path pseudo header with nullptr value so we can get the index to update it with
+                                path_index = set_header(":path", nullptr);
+
+                                // we set our scheme pseudo header - this doesn't change after connecting to the server
+                                set_header(":scheme", const_cast<char*>("https"));
+
+                                // we set our authority pseudo header - this also doesn't change after connecting to the server
+                                set_header(":authority", c_host);
+
+                            }
+
+                        }
+                    
+                    }
+        
+                }
+        
+            }
+        
         }
 
     }
@@ -1020,6 +1005,9 @@ lock_http2_client_nb::~lock_http2_client_nb(){
         close();
 
     }
+
+    // we free our nghttp2 session
+    nghttp2_session_del(session);
     
     // free url heap memory - this only runs if dynamic memory allocation is used to store the url
     if(!(c_url_new == NULL)){
@@ -1045,6 +1033,17 @@ lock_http2_client_nb::~lock_http2_client_nb(){
     if(c_ssl != NULL && c_url != NULL){
         
         wolfSSL_free(c_ssl); // frees the wolfssl object
+    }
+
+    // we free all allocated data memory if any - heap memory for data starts from index NUM_OF_STATIC_ARRAYS of our metadata array
+    for(int i = NUM_OF_STATIC_ARRAYS; i<MAX_CONCURRENT_STREAMS; i++){
+
+        // end the loop if we reach a nullptr
+        if(metadata[i].data_array == nullptr) break;
+
+        // we free this memory
+        delete [] metadata[i].data_array;
+
     }
     
 }
@@ -1902,331 +1901,319 @@ bool lock_http2_client_nb::interface_connect(std::string_view url, in_addr* inte
             
     }
 
-    // check if url is a wss:// endpoint, check case insensitively
-
-    if( (url.compare(0, 6, "wss://") == 0) || (url.compare(0, 6, "Wss://") == 0) || (url.compare(0, 6, "WSs://") == 0) || (url.compare(0, 6, "WSS://") == 0) || (url.compare(0, 6, "WsS://") == 0) || (url.compare(0, 6, "wSS://") == 0) || (url.compare(0, 6, "wsS://") == 0) || (url.compare(0, 6, "wSs://") == 0) ){ // endpoint is a wss:// endpoint, the second parameter to the std::string_view compare function is 6 which is the length of the string "wss://" which we are testing for the presence of, we list out and compare the 8 possible combinations of uppercase and lowercase lettering that are valid
+    // check if url is a https:// endpoint, check case insensitively - for the wolfssl client we only implement the https client
+        
+    if(url.compare(0, 8, "https://") == 0){
     
-        int protocol_prefix_len = strlen("wss://");
+        int protocol_prefix_len = strlen("https://");
 
-        // we fetch the url length without the wss:// prefix and any path appended to the url, we do this by finding the next '/' character after the initial wss://
-        size_t base_url_end_index = url.find('/', protocol_prefix_len);
+        int base_url_length = url.size() - protocol_prefix_len; // saves the length of the url without the https:// prefix
+        
+        // size of required memory in bytes to store the base url
+        int req_mem = base_url_length;
 
-        int base_url_length = (base_url_end_index != std::string_view::npos) ? (int)base_url_end_index - protocol_prefix_len : url.size() - protocol_prefix_len; // saves the length of the url without the wss:// prefix and the path if any
+        // we create our ssl object
+        c_ssl = wolfSSL_new(ssl_ctx);
+    
+        if(!error){ // the constructor continues only if there was no error fetching the ssl pointer
 
-        // size of required memory in bytes to store the base url and the port number if it would be appended
-        int req_mem = base_url_length + 5; // we add an extra 5 bytes to the base url length to accomodate for the chance that this url was supplied without a port number so we have enough room to append port :443 to the base url
-        
-        // URL copy 
-        if(req_mem < url_static_array_length){ // static memory large enough
-        
-            url.copy(c_url_static, base_url_length, protocol_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the static character array
-        
-            c_url_static[base_url_length] = '\0'; // null-terminate the string
-        
-            c_url = c_url_static;
-        
-        }
-        else if(req_mem < size_of_allocated_url_memory){ // store in already allocated dynamic memory
-        
-            url.copy(c_url_new, base_url_length, protocol_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the already allocated character array
-        
-            c_url_new[base_url_length] = '\0'; // null-terminate the string
-        
-            c_url = c_url_new;
+            // URL copy 
+            if(req_mem < url_static_array_length){ // static memory large enough
             
-        
-        }
-        else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not
+                url.copy(c_url_static, base_url_length, protocol_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the static character array
             
-            if(c_url_new == NULL){ // memory has not yet been allocated
-                
-                c_url_new = new(std::nothrow) char[req_mem]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+                c_url_static[base_url_length] = '\0'; // null-terminate the string
             
-                if(c_url_new == NULL){
-                    
-                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
-                    
-                    error = true;
-                    
-                }
-                else{
-                    
-                    size_of_allocated_url_memory = req_mem;    
-                        
-                    url.copy(c_url_new, base_url_length, protocol_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
-        
-                    c_url_new[base_url_length] = '\0';
-        
-                    c_url = c_url_new;
-                
-                }
-        
-            }
-            else{ // memory has been allocated but still isn't large enough
-                
-                delete [] c_url_new; // delete the already allocated memory
-                
-                // heap memory allocation for urls larger than the static array length
-                c_url_new = new(std::nothrow) char[req_mem]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
-            
-                
-                if(c_url_new == NULL){
-                    
-                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
-                    
-                    error = true;
-                    
-                }
-                else{
-                    
-                    size_of_allocated_url_memory = req_mem;    
-                        
-                    url.copy(c_url_new, base_url_length, protocol_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
-            
-                    c_url_new[base_url_length] = '\0';
-
-                    c_url = c_url_new;
-                
-                }
+                c_url = c_url_static;
             
             }
-
-        }
-
-        if(!error){
-
-            // we check if the supplied url has the port number appended if not we append it
-            if(strchr(c_url, ':') == NULL){
-                strcat(c_url, ":443"); // we use strcat here because the array length check already checks that we have enough space in the array to accomodate for the port number
-            }
-
-            // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
-            size_t host_name_end_index = url.find_first_of(":/", protocol_prefix_len); // we start searching at the protocol_prefix_len - index 6 to bypass the wss:// protocol prefix length
+            else if(req_mem < size_of_allocated_url_memory){ // store in already allocated dynamic memory
+                
+                url.copy(c_url_new, base_url_length, protocol_prefix_len); // protocol prefix len specifies the starting point where the copy should begin, the url.copy copies the string view object into the already allocated character array
             
-            int host_name_len = (host_name_end_index == std::string_view::npos) ? url.size() - protocol_prefix_len : (int)host_name_end_index - protocol_prefix_len;
-
-            if( host_name_len < host_static_array_length ){ // static array is large enough
+                c_url_new[base_url_length] = '\0'; // null-terminate the string
             
-                url.copy(c_host_static, host_name_len, protocol_prefix_len);
-            
-                c_host_static[host_name_len] = '\0';
-            
-                c_host = c_host_static;
+                c_url = c_url_new;
+                
             
             }
-            else if( host_name_len < size_of_allocated_host_memory){ // dynamic memory is large enough
+            else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not 
                 
-                url.copy(c_host_new, host_name_len, protocol_prefix_len);
-            
-                c_host_new[host_name_len] = '\0';
-            
-                c_host = c_host_new;
-                
-            }
-            else{ // neither static or already allocated memory is large enough, we test the two possible cases
-                
-                if(c_host_new == NULL){ // memory has not been allocated yet 
-                
-                    c_host_new = new(std::nothrow) char[host_name_len + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
-            
-            
-                    if(c_host_new == NULL){
-                
-                        strncpy(error_buffer, "Error allocating heap memory for server host name ", error_buffer_array_length);
+                if(c_url_new == NULL){ // memory has not yet been allocated
                     
-                        error = true;    
+                    c_url_new = new(std::nothrow) char[req_mem]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
                 
-                    }
-                    else{
+                
+                    if(c_url_new == NULL){
                         
-                        size_of_allocated_host_memory = host_name_len + 1;
+                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
                         
-                        url.copy(c_host_new, host_name_len, protocol_prefix_len);
-            
-                        c_host_new[host_name_len] = '\0';
-            
-                        c_host = c_host_new;
-            
-                    }
-                
-                }
-                else{ // memory has been allocated but it still isn't sufficient
-                    
-                    delete [] c_host_new; // delete the previously allocated memory
-                    
-                    c_host_new = new(std::nothrow) char[host_name_len + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
-            
-            
-                    if(c_host_new == NULL){
-                
-                        strncpy(error_buffer, "Error allocating heap memory for server host name ", error_buffer_array_length);
-                    
-                        error = true;    
-                
-                    }
-                    else{
-                        
-                        size_of_allocated_host_memory = host_name_len + 1;
-                        
-                        url.copy(c_host_new, host_name_len, protocol_prefix_len);
-            
-                        c_host_new[host_name_len] = '\0';
-            
-                        c_host = c_host_new;
-
-            
-                    }
-                
-                }
-                
-            }
-
-            // we create a local char array to hold the port extracted from the url
-            const int MAX_CHAR_FOR_PORT = 8; // a port number can have a maximum of 5 characters because port numbers are 16 bit integers
-            char c_port[MAX_CHAR_FOR_PORT];
-
-            // since the host_name_end_index already finds the first character out of : and / after the host name we use it to find the port number location if any
-
-            // we first check if the host name end index was either std::string_view::npos or / in which case we know the host wasn't supplied so we store 443 as the host, but if the : character was found then the host was supplied so we just create a sub string view from after the : character to either the / starting the path if supplied, but if not supplied till std::string_view::npos - host_name_end_index - 1 which would be a very large number the copy takes the rest of the url string_view
-            std::string_view port = (host_name_end_index == std::string_view::npos || url[host_name_end_index] == '/') ? "443" : url.substr(host_name_end_index + 1, url.find('/', host_name_end_index) - host_name_end_index - 1);
-
-            // we now copy the derived port into char array
-            int num_of_chars_copied = port.copy(c_port, port.size());
-
-            // we null terminate the c_port array
-            c_port[num_of_chars_copied] = '\0';
-
-            // now we can call the connect to server function that would return the configured socket file descriptor
-            int sockfd = connect_to_server(c_host, c_port, interface_address, interface_name);
-
-            if(!error){ // only continue if no error
-
-                // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
-                wolfSSL_set_fd(c_ssl, sockfd);
-
-                // we set the application layer protocol for our ssl object to http2
-                wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
-
-                // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
-                int len;
-
-                while((len = wolfSSL_connect(c_ssl)) != WOLFSSL_SUCCESS){
-                    
-                    // we get the error message
-                    int err = wolfSSL_get_error(c_ssl, len);
-
-                    // we check if the wolfssl handle is still expecting a read or a write
-                    if(err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE){
-
-                        continue;
-
-                    }
-                    else{
-
-                        // getting here we got a actual error so we set our error flag
-                        strncpy(error_buffer, "Error performing tls handshake ", error_buffer_array_length);
-                    
                         error = true;
-
-                        // we break out of this loop
-                        break;
-
+                        
                     }
-
-                }
+                    else{
+                        
+                        size_of_allocated_url_memory = req_mem;    
+                            
+                        url.copy(c_url_new, base_url_length, protocol_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
             
-                if(!error){ // only continue if no error
+                        c_url_new[base_url_length] = '\0';
             
-                    // we fetch the path for this connection
-
-                    // we check if a forward slash was found after the last colon, if none was we connect to the default root path else the forward slash till the end of the url string is the path
-                    std::string_view path = (base_url_end_index != std::string_view::npos) ? url.substr(base_url_end_index) : "/";
-
-                    // copy the channel path parameter into the channel path array
-                    int path_string_len = path.size();
+                        c_url = c_url_new;
                     
-                    if(path_string_len < path_static_array_length){ // we can store the path in the static array if this condition is true
-                        
-                        path.copy(c_path_static, path_string_len); // copy the path into the static array
-                        c_path_static[path_string_len] = '\0'; // null-terminate the array
-                        
-                        c_path = c_path_static;
-                        
                     }
-                    else if(path_string_len < size_of_allocated_path_memory){ // allocated memory is large enough
-                        
-                        path.copy(c_path_new, path_string_len); // copy the path into the allocated array
-                        c_path_new[path_string_len] = '\0'; // null-terminate the array
-                        
-                        c_path = c_path_new;
-                        
-                    }
-                    else{ // neither static or already allocated memory is large enough, we test the two possible cases 
-                        
-                        if(c_path_new == NULL){ //memory has not been allocated yet
-                        
-                            c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
-                        
-                            if(c_path_new == NULL){
-                            
-                                strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
-                                
-                                error = true;
-                                
-                            }
-                            else{ 
-                                
-                                size_of_allocated_path_memory = path_string_len + 1;
-                                
-                                path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                        
-                                c_path_new[path_string_len] = '\0'; // null-terminate the array
-                        
-                                c_path = c_path_new;
-                        
-                            }
-                            
-                        }
-                        else{ // memory has been allocated but is still not sufficient
-                            
-                            delete [] c_path_new; // delete already allocated memory
-                            
-                            c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
-                        
-                            if(c_path_new == NULL){
-                            
-                                strncpy(error_buffer, "Error allocating heap memory for lock_client channel path ", error_buffer_array_length);
-                                
-                                error = true;
-                                
-                            }
-                            else{ 
-                                
-                                size_of_allocated_path_memory = path_string_len + 1;
-                                
-                                path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                        
-                                c_path_new[path_string_len] = '\0'; // null-terminate the array
-                        
-                                c_path = c_path_new;
-                        
-                            }
-                            
-                        }
-                        
-                    }
-
-                }
             
+                }
+                else{ // memory has been allocated but still isn't large enough
+                    
+                    delete [] c_url_new; // delete the already allocated memory
+                    
+                    // heap memory allocation for urls larger than the static array length
+                    c_url_new = new(std::nothrow) char[req_mem]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+                
+                    
+                    if(c_url_new == NULL){
+                        
+                        strcpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ");
+                        
+                        error = true;
+                        
+                    }
+                    else{
+                        
+                        size_of_allocated_url_memory = req_mem;    
+                            
+                        url.copy(c_url_new, base_url_length, protocol_prefix_len); // the int protocol prefix specifies the starting point where the copy should begin, the url.copy copies the string view object into the allocated character array
+                
+                        c_url_new[base_url_length] = '\0';
+
+                        c_url = c_url_new;
+                    
+                    }
+                
+                }
+
             }
+        
         }
+    
     }
     else{ // not a valid/supported http endpoint
         
-        strncpy(error_buffer, "Supplied URL parameter is not a valid/supported HTTP endpoint", error_buffer_array_length);
+        strcpy(error_buffer, "Supplied URL parameter is not a valid/supported HTTP endpoint");
                 
         error = true;
         
+    }
+    
+    if(!error){ // only continue if no error
+        
+        int search_start_index = 8; // we store the index where we would begin the host name search from, we start searching from after the https:// protocol prefix
+
+        /* // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
+        size_t host_name_end_index = url.find_first_of(":/", search_start_index); // we start searching at the search_start_index - index 8 to bypass the https:// protocol prefix length */
+        
+        int host_name_len = url.size() - search_start_index;
+
+        if(host_name_len < host_static_array_length){ // static array is large enough
+        
+            url.copy(c_host_static, host_name_len, search_start_index);
+        
+            c_host_static[host_name_len] = '\0';
+        
+            c_host = c_host_static;
+        
+        }
+        else if(host_name_len < size_of_allocated_host_memory){ // dynamic memory is large enough
+            
+            url.copy(c_host_new, host_name_len, search_start_index);
+        
+            c_host_new[host_name_len] = '\0';
+        
+            c_host = c_host_new;
+            
+        }
+        else{ // neither static or already allocated memory is large enough, we test the two possible cases
+            
+            if(c_host_new == NULL){ // memory has not been allocated yet 
+            
+                c_host_new = new(std::nothrow) char[host_name_len + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+        
+        
+                if(c_host_new == NULL){
+            
+                    strcpy(error_buffer, "Error allocating heap memory for server host name ");
+                
+                    error = true;    
+            
+                }
+                else{
+                    
+                    size_of_allocated_host_memory = host_name_len + 1;
+                    
+                    url.copy(c_host_new, host_name_len, search_start_index);
+        
+                    c_host_new[host_name_len] = '\0';
+        
+                    c_host = c_host_new;
+        
+                }
+            
+            }
+            else{ // memory has been allocated but it still isn't sufficient
+                
+                delete [] c_host_new; // delete the previously allocated memory
+                
+                c_host_new = new(std::nothrow) char[host_name_len + 1]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+        
+        
+                if(c_host_new == NULL){
+            
+                    strcpy(error_buffer, "Error allocating heap memory for server host name ");
+                
+                    error = true;    
+            
+                }
+                else{
+                    
+                    size_of_allocated_host_memory = host_name_len + 1;
+                    
+                    url.copy(c_host_new, host_name_len, search_start_index);
+        
+                    c_host_new[host_name_len] = '\0';
+        
+                    c_host = c_host_new;
+
+        
+                }
+            
+            }
+            
+        }
+        
+        if(!error){ // only continue if no error
+        
+            // we set the host name we wish to connect to for server name identification(SNI)
+            if(!(c_ssl == NULL)){
+                
+                if(!wolfSSL_UseSNI(c_ssl, WOLFSSL_SNI_HOST_NAME, c_host, host_name_len)){
+                // we test the return value. wolfSSL_UseSNI returns 0 on error and 1 on success
+                    
+                    strcpy(error_buffer, "Error setting up Lock client for SNI TLS extension");
+                        
+                    error = true;
+                
+                }
+                
+            }
+            
+            if(!error){
+            // only continue if no error
+
+                // we create a local char array to hold the port extracted from the url
+                const int MAX_CHAR_FOR_PORT = 8; // a port number can have a maximum of 5 characters because port numbers are 16 bit integers
+                char c_port[MAX_CHAR_FOR_PORT];
+
+                // we set our port number to 443 as this is a https request
+                std::string_view port = "443";
+
+                // we now copy the derived port into char array
+                int num_of_chars_copied = port.copy(c_port, port.size());
+
+                // we null terminate the c_port array
+                c_port[num_of_chars_copied] = '\0';
+
+                // we call our connect to server function with the interface parameters
+                int sockfd = connect_to_server(c_host, c_port, interface_address, interface_name);
+                
+                if(!error){ // only continue if no error
+
+                    // getting here the connect to server function returned successfully so now we bind the returned socket fd to our c_ssl object
+                    wolfSSL_set_fd(c_ssl, sockfd);
+
+                    // we set the application layer protocol for our ssl object to http2
+                    wolfSSL_UseALPN(c_ssl, (char*)"h2", 2, WOLFSSL_ALPN_FAILED_ON_MISMATCH);
+
+                    // we perform our tls handshake - since this is a non blocking socket we loop till our handshake is complete
+                    int len;
+
+                    while((len = wolfSSL_connect(c_ssl)) != WOLFSSL_SUCCESS){
+                        
+                        // we get the error message
+                        int err = wolfSSL_get_error(c_ssl, len);
+
+                        // we check if the wolfssl handle is still expecting a read or a write
+                        if(err == WOLFSSL_ERROR_WANT_READ || err == WOLFSSL_ERROR_WANT_WRITE){
+
+                            continue;
+
+                        }
+                        else{
+
+                            // getting here we got a actual error so we set our error flag
+                            strcpy(error_buffer, "Error performing tls handshake ");
+
+                            // we concatenate the wolfssl error
+                            wolfSSL_ERR_error_string(err, error_buffer + strlen(error_buffer));
+                        
+                            error = true;
+
+                            // we break out of this loop
+                            break;
+
+                        }
+
+                    }
+                
+                    if(!error){ // only continue if no error
+                
+                        // we check if h2 protocol was negotiated
+                        char* protocol = nullptr;
+                        unsigned short protocol_len = 0;
+
+                        // we call wolfssl get alpn protocol to check the negotiated protocol
+                        wolfSSL_ALPN_GetProtocol(c_ssl, &protocol, &protocol_len);
+
+                        if(protocol_len != 2 || memcmp(protocol, "h2", 2) != 0){
+
+                            strcpy(error_buffer, "h2 protocol was not negotiated");
+
+                            error = true;
+
+                            // we disconnect from the server
+                            reset();
+                        }
+
+                        // only continue if no error
+                        if(!error){
+
+                            // we set our http headers
+
+                            // we first clear all previous headers
+                            clear_all_headers();
+
+                            // we set our method pseudo header with nullptr value so we can get the index to update it with
+                            method_index = set_header(":method", nullptr);
+
+                            // we set our path pseudo header with nullptr value so we can get the index to update it with
+                            path_index = set_header(":path", nullptr);
+
+                            // we set our scheme pseudo header - this doesn't change after connecting to the server
+                            set_header(":scheme", const_cast<char*>("https"));
+
+                            // we set our authority pseudo header - this also doesn't change after connecting to the server
+                            set_header(":authority", c_host);
+
+                        }
+
+                    }
+                
+                }
+    
+            }
+    
+        }
+    
     }
 
 
