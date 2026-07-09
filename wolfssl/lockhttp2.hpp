@@ -1105,7 +1105,7 @@ int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_f
     // we fetch our stream data for this request
     meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, frame->hd.stream_id));
 
-    return client->default_header_receive(reinterpret_cast<const char*>(name), namelen, reinterpret_cast<const char*>(value), valuelen, (stream_metadata != nullptr) ? stream_metadata->user_id : -1);
+    return client->recv_header(reinterpret_cast<const char*>(name), namelen, reinterpret_cast<const char*>(value), valuelen, (stream_metadata != nullptr) ? stream_metadata->user_id : -1);
 
 }
 
@@ -1450,6 +1450,12 @@ void lock_http2_client_nb::set_receive_function(lock_function fn){
     
     recv_data = std::move(fn);
     
+}
+
+void lock_http2_client_nb::set_header_receive_function(lock_header_function fn){
+
+    recv_header = std::move(fn);
+
 }
 
 bool lock_http2_client_nb::basic_read(){
