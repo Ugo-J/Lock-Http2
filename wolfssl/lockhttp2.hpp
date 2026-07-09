@@ -15,7 +15,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
 
     if(wolfSSL_Init() != WOLFSSL_SUCCESS){
 
-        strncpy(error_buffer, "Failed to initialize wolfSSL core runtime.", error_buffer_array_length);
+        strcpy(error_buffer, "Failed to initialize wolfSSL core runtime.");
             
         error = true;
 
@@ -28,7 +28,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
 
         if(!ssl_ctx){
 
-            strncpy(error_buffer, "Context creation failed.", error_buffer_array_length);
+            strcpy(error_buffer, "Context creation failed.");
                 
             error = true;
 
@@ -39,7 +39,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
 
         if(ca_ret != WOLFSSL_SUCCESS){
 
-            strncpy(error_buffer, "Failed to load system CA bundle.", error_buffer_array_length);
+            strcpy(error_buffer, "Failed to load system CA bundle.");
 
             error = true;
         }
@@ -49,6 +49,80 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
 
         // load the general memory pool
         wolfSSL_CTX_load_static_memory(&ssl_ctx, NULL, general_memory_pool, CRYPTO_ARENA_SIZE, WOLFMEM_GENERAL, 1);
+
+        // NGHTTP2 INITIALISATION
+
+        // continue if no error
+        if(!error){
+
+            // we set our nghttp2 callbacks
+
+            nghttp2_session_callbacks *callbacks = nullptr;
+
+            // we initialise our local callback function
+            int rv = nghttp2_session_callbacks_new(&callbacks);
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+                error = true;
+
+            }
+
+            // continue if no error
+            if(!error){
+
+                // Register our callbacks
+                nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+                nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+                nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+                nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+                // now we initialise our session client
+                rv = nghttp2_session_client_new(&session, callbacks, this);
+
+                // our callbacks are copied internally into our session object so we delete the callback pointer here
+                nghttp2_session_callbacks_del(callbacks);
+
+                if(rv != 0){
+                    
+                    strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+                    // we concatenate the nghttp2 specific error
+                    strcat(error_buffer, nghttp2_strerror(rv));
+                
+                    error = true;
+
+                }
+
+                // continue if no error
+                if(!error){
+
+                    // we declare our nghttp2 settings struct and set our max concurrent streams in it
+                    nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+                    // we submit our settings
+                    rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
+
+                    if(rv != 0){
+
+                        strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                        // we concatenate the nghttp2 specific error
+                        strcat(error_buffer, nghttp2_strerror(rv));
+                    
+                        error = true;
+
+                    }
+                    
+                    // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+                }
+
+            }
+
+        }
 
     }
 
@@ -388,7 +462,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
 
         if(!ssl_ctx){
 
-            strncpy(error_buffer, "Context creation failed.", error_buffer_array_length);
+            strcpy(error_buffer, "Context creation failed.");
                 
             error = true;
 
@@ -399,7 +473,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
 
         if(ca_ret != WOLFSSL_SUCCESS){
 
-            strncpy(error_buffer, "Failed to load system CA bundle.", error_buffer_array_length);
+            strcpy(error_buffer, "Failed to load system CA bundle.");
 
             error = true;
         }
@@ -410,13 +484,87 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
         // load the general memory pool
         wolfSSL_CTX_load_static_memory(&ssl_ctx, NULL, general_memory_pool, CRYPTO_ARENA_SIZE, WOLFMEM_GENERAL, 1);
 
+        // NGHTTP2 INITIALISATION
+
+        // continue if no error
+        if(!error){
+
+            // we set our nghttp2 callbacks
+
+            nghttp2_session_callbacks *callbacks = nullptr;
+
+            // we initialise our local callback function
+            int rv = nghttp2_session_callbacks_new(&callbacks);
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+                error = true;
+
+            }
+
+            // continue if no error
+            if(!error){
+
+                // Register our callbacks
+                nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+                nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+                nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+                nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+                // now we initialise our session client
+                rv = nghttp2_session_client_new(&session, callbacks, this);
+
+                // our callbacks are copied internally into our session object so we delete the callback pointer here
+                nghttp2_session_callbacks_del(callbacks);
+
+                if(rv != 0){
+                    
+                    strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+                    // we concatenate the nghttp2 specific error
+                    strcat(error_buffer, nghttp2_strerror(rv));
+                
+                    error = true;
+
+                }
+
+                // continue if no error
+                if(!error){
+
+                    // we declare our nghttp2 settings struct and set our max concurrent streams in it
+                    nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+                    // we submit our settings
+                    rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
+
+                    if(rv != 0){
+
+                        strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                        // we concatenate the nghttp2 specific error
+                        strcat(error_buffer, nghttp2_strerror(rv));
+                    
+                        error = true;
+
+                    }
+                    
+                    // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+                }
+
+            }
+
+        }
+
     }
     
     if(!error){
 
-        // check if url is a wss:// endpoint, check case insensitively
-
-        if( (url.compare(0, 6, "wss://") == 0) || (url.compare(0, 6, "Wss://") == 0) || (url.compare(0, 6, "WSs://") == 0) || (url.compare(0, 6, "WSS://") == 0) || (url.compare(0, 6, "WsS://") == 0) || (url.compare(0, 6, "wSS://") == 0) || (url.compare(0, 6, "wsS://") == 0) || (url.compare(0, 6, "wSs://") == 0) ){ // endpoint is a wss:// endpoint, the second parameter to the std::string_view compare function is 6 which is the length of the string "wss://" which we are testing for the presence of, we list out and compare the 8 possible combinations of uppercase and lowercase lettering that are valid
+        // check if url is a https:// endpoint, check case insensitively - for the wolfssl client we only implement the https client
+        
+        if(url.compare(0, 8, "https://") == 0){
         
             int protocol_prefix_len = strlen("wss://");
 
@@ -735,7 +883,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
         }
         else{ // not a valid/supported http endpoint
             
-            strncpy(error_buffer, "Supplied URL parameter is not a valid/supported HTTP endpoint", error_buffer_array_length);
+            strcpy(error_buffer, "Supplied URL parameter is not a valid/supported HTTP endpoint");
                     
             error = true;
             
