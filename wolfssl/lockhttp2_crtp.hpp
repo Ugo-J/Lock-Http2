@@ -1020,13 +1020,6 @@ lock_http2_client_nb_crtp<T>::~lock_http2_client_nb_crtp(){
         
     }
     
-    // free path heap memory if the path string was stored in dynamic memory
-    if(!(c_path_new == NULL)){
-        
-        delete [] c_path_new;
-        
-    }
-    
     // free host heap memory if host string was stored in dynamic memory
     if(!(c_host_new == NULL)){
         

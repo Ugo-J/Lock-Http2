@@ -72,7 +72,6 @@ private:
 private:
 
     int handle_frame_recv(const nghttp2_frame *frame);
-    int handle_header(const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags);
     int handle_data_chunk(uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len);
     int handle_stream_close(int32_t stream_id, uint32_t error_code);
 
@@ -102,11 +101,6 @@ private:
     uint64_t size_of_allocated_url_memory = 0;
     char* c_url_new = NULL;
     char* c_url = NULL;
-    static const int path_static_array_length = 512; 
-    char c_path_static[path_static_array_length] = {'\0'}; // static array for holding the channel path
-    uint64_t size_of_allocated_path_memory = 0;
-    char* c_path_new = NULL; 
-    char* c_path = NULL;
     static const int host_static_array_length = 128;
     char c_host_static[host_static_array_length] = {'\0'}; // static array for holding the hostname
     uint64_t size_of_allocated_host_memory = 0;
