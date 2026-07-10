@@ -1,5 +1,3 @@
-using lock_function = std::function<int(char*, int, int, int)>;
-using lock_header_function = std::function<int(const char*, size_t, const char*, size_t, int)>;
 // non blocking lock client
 template <typename T>
 class lock_http2_client_nb_crtp {
@@ -31,11 +29,11 @@ public:
 private:
 // pointers to receive functions
     
-    // receive function pointer
-    lock_function recv_data = lock_http2_client_nb_crtp::default_receive;
+    // receive data function
+    int recv_data(char*, int, int, int);
 
-    // header receive function pointer - default function for receiving headers
-    lock_header_function recv_header = lock_http2_client_nb_crtp::default_header_receive;
+    // receive header function
+    int recv_header(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id);
 
     
 // private class functions

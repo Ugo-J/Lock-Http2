@@ -2234,7 +2234,7 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         std::cout<<"Error creating socket"<<std::endl;
-        strncpy(error_buffer, "Error creating socket", error_buffer_array_length);          
+        strcpy(error_buffer, "Error creating socket");          
         error = true;
         return -1;
     }
@@ -2246,7 +2246,7 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
         if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interface_name, strlen(interface_name)) < 0) {
             std::cout<<"Error binding socket to device"<<std::endl;
             perror("setsockopt(SO_BINDTODEVICE)");
-            strncpy(error_buffer, "Error binding socket to device", error_buffer_array_length);          
+            strcpy(error_buffer, "Error binding socket to device");          
             error = true;
             ::close(sock);
             return -1;
@@ -2283,7 +2283,7 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
     // Perform DNS resolution
     if(getaddrinfo(hostname, port, &hints, &res) != 0) {
         std::cout<<"Error resolving hostname: "<<hostname<<std::endl;
-        strncpy(error_buffer, "Error resolving hostname", error_buffer_array_length);          
+        strcpy(error_buffer, "Error resolving hostname");          
         error = true;
         return -1;
     }
@@ -2307,7 +2307,7 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
 
     if (sock < 0) {
         std::cout<<"Failed to connect to "<<hostname<<':'<<port<<std::endl;
-        strncpy(error_buffer, "Failed to connect to host", error_buffer_array_length);          
+        strcpy(error_buffer, "Failed to connect to host");          
         error = true;
         return -1;
     }
