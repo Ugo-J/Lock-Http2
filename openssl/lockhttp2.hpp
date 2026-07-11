@@ -86,7 +86,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
 
     // NGHTTP2 INITIALISATION END
     
-    // check if url is a https:// endpoint, check case insensitively - for the wolfssl client we only implement the https client
+    // check if url is a https:// endpoint, check case insensitively - we only implement the https client
         
     if(url.compare(0, 8, "https://") == 0){
     
@@ -209,7 +209,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
     }
     else{ // not a valid http endpoint
         
-        strcpy(error_buffer, "Supplied URL parameter is not a valid HTTP endpoint");
+        strcpy(error_buffer, "Supplied URL parameter is not a valid https endpoint");
                 
         error = true;
         
@@ -386,22 +386,90 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
 // constructor that binds to a network interface
 lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interface_address, char* interface_name){
 
-    // initialise our ssl ctx
+    // we initialise our ssl ctx
     ssl_ctx = SSL_CTX_new(TLS_client_method());
+
+    // NGHTTP2 INITIALISATION
+
+    // we set our nghttp2 callbacks
+
+    nghttp2_session_callbacks *callbacks = nullptr;
+
+    // we initialise our local callback function
+    int rv = nghttp2_session_callbacks_new(&callbacks);
+
+    if(rv != 0){
+
+        strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+        error = true;
+
+    }
+
+    // continue if no error
+    if(!error){
+
+        // Register our callbacks
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+        // now we initialise our session client
+        rv = nghttp2_session_client_new(&session, callbacks, this);
+
+        // our callbacks are copied internally into our session object so we delete the callback pointer here
+        nghttp2_session_callbacks_del(callbacks);
+
+        if(rv != 0){
+            
+            strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+            // we concatenate the nghttp2 specific error
+            strcat(error_buffer, nghttp2_strerror(rv));
+        
+            error = true;
+
+        }
+
+        // continue if no error
+        if(!error){
+
+            // we declare our nghttp2 settings struct and set our max concurrent streams in it
+            nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+            // we submit our settings
+            rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                // we concatenate the nghttp2 specific error
+                strcat(error_buffer, nghttp2_strerror(rv));
+            
+                error = true;
+
+            }
+            
+            // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+        }
+
+    }
+
+    // NGHTTP2 INITIALISATION END
     
-    // check if url is a ws:// or wss:// endpoint, check case insensitively
-
-    if( (url.compare(0, 6, "wss://") == 0) || (url.compare(0, 6, "Wss://") == 0) || (url.compare(0, 6, "WSs://") == 0) || (url.compare(0, 6, "WSS://") == 0) || (url.compare(0, 6, "WsS://") == 0) || (url.compare(0, 6, "wSS://") == 0) || (url.compare(0, 6, "wsS://") == 0) || (url.compare(0, 6, "wSs://") == 0) ){ // endpoint is a wss:// endpoint, the second parameter to the std::string_view compare function is 6 which is the length of the string "wss://" which we are testing for the presence of, we list out and compare the 8 possible combinations of uppercase and lowercase lettering that are valid
+    // check if url is a https:// endpoint, check case insensitively - we only implement the https client
+        
+    if(url.compare(0, 8, "https://") == 0){
     
-        int protocol_prefix_len = strlen("wss://");
+        int protocol_prefix_len = strlen("https://");
 
-        // we fetch the url length without the wss:// prefix and any path appended to the url, we do this by finding the next '/' character after the initial wss://
-        size_t base_url_end_index = url.find('/', protocol_prefix_len);
-
-        int base_url_length = (base_url_end_index != std::string_view::npos) ? (int)base_url_end_index - protocol_prefix_len : url.size() - protocol_prefix_len; // saves the length of the url without the wss:// prefix and the path if any
-
-        // size of required memory in bytes to store the base url and the port number if it would be appended
-        int req_mem = base_url_length + 5; // we add an extra 5 bytes to the base url length to accomodate for the chance that this url was supplied without a port number so we have enough room to append port :443 to the base url
+        int base_url_length = url.size() - protocol_prefix_len; // saves the length of the url without the https:// prefix
+        
+        // size of required memory in bytes to store the base url and the port number
+        int req_mem = base_url_length + 5; // we add an extra 5 bytes to the base url length to accomodate for the port number we would append
         
         // URL copy 
         if(req_mem < url_static_array_length){ // static memory large enough
@@ -431,7 +499,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
             
                 if(c_url_new == NULL){
                     
-                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
+                    strcpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ");
                     
                     error = true;
                     
@@ -459,7 +527,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
                 
                 if(c_url_new == NULL){
                     
-                    strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
+                    strcpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ");
                     
                     error = true;
                     
@@ -482,15 +550,12 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
 
         if(!error){
 
-            // we check if the supplied url has the port number appended if not we append it
-            if(strchr(c_url, ':') == NULL){
-                strcat(c_url, ":443"); // we use strcat here because the array length check already checks that we have enough space in the array to accomodate for the port number
-            }
+            // we append our port number - we use strcat here because the array length check already checks that we have enough space in the array to accomodate for the port number
+            strcat(c_url, ":443");
 
-            // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
-            size_t host_name_end_index = url.find_first_of(":/", protocol_prefix_len); // we start searching at the protocol_prefix_len - index 6 to bypass the wss:// protocol prefix length
+            int search_start_index = 8; // we store the index where we would begin the host name search from, we start searching from after the https:// protocol prefix
             
-            int host_name_len = (host_name_end_index == std::string_view::npos) ? url.size() - protocol_prefix_len : (int)host_name_end_index - protocol_prefix_len;
+            int host_name_len = url.size() - search_start_index;
 
             if( host_name_len < host_static_array_length ){ // static array is large enough
             
@@ -572,10 +637,8 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
             const int MAX_CHAR_FOR_PORT = 8; // a port number can have a maximum of 5 characters because port numbers are 16 bit integers
             char c_port[MAX_CHAR_FOR_PORT];
 
-            // since the host_name_end_index already finds the first character out of : and / after the host name we use it to finc the port number location if any
-
-            // we first check if the host name end index was either std::string_view::npos or / in which case we know the host wasn't supplied so we store 443 as the host, but if the : character was found then the host was supplied so we just create a sub string view from after the : character to either the / starting the path if supplied, but if not supplied till std::string_view::npos - host_name_end_index - 1 which would be a very large number the copy takes the rest of the url string_view
-            std::string_view port = (host_name_end_index == std::string_view::npos || url[host_name_end_index] == '/') ? "443" : url.substr(host_name_end_index + 1, url.find('/', host_name_end_index) - host_name_end_index - 1);
+            // we store our port number which is 443 for a https connection
+            std::string_view port = "443";
 
             // we now copy the derived port into char array
             int num_of_chars_copied = port.copy(c_port, port.size());
@@ -593,8 +656,9 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
                 SSL *c_ssl = SSL_new(ssl_ctx);
                 if(c_ssl == NULL){
                     
-                    strncpy(error_buffer, "Error creating SSL structure ", error_buffer_array_length);
+                    strcpy(error_buffer, "Error creating SSL structure ");
                     error = true;
+
                 }
             
                 if(!error){
@@ -606,12 +670,16 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
                     // set SSL mode to retry automatically should SSL connection fail
                     SSL_set_mode(c_ssl, SSL_MODE_AUTO_RETRY);
 
+                    // we set our alpn protos on our ssl object to indicate that this handle only negotiates http2 protocol
+                    SSL_set_alpn_protos(c_ssl, (const unsigned char *)"\x02h2", 3);
+
                     // Create BIO for this socket
                     BIO* sock_bio = BIO_new_socket(sock, BIO_NOCLOSE);
-                    if (!sock_bio) {
+                    if(!sock_bio){
+                        
                         SSL_free(c_ssl);
                         ::close(sock);
-                        strncpy(error_buffer, "Error creating BIO structure from socket", error_buffer_array_length);          
+                        strcpy(error_buffer, "Error creating BIO structure from socket");          
                         error = true;
                     }
 
@@ -625,105 +693,55 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
                         // Chain ssl_bio and sock_bio together
                         c_bio = BIO_push(ssl_bio, sock_bio);
 
-                        // Initialize SSL connection
+                        // initialize SSL connection
                         SSL_set_connect_state(c_ssl);  // Set as client
 
-                        // Perform handshake
-                        if (BIO_do_handshake(c_bio) <= 0) {
-                            std::cout << "SSL handshake failed"<< std::endl;
-                            BIO_free_all(c_bio); // this throws segmentation fault when called without any network connection
-                            strncpy(error_buffer, "SSL handshake failed", error_buffer_array_length);          
+                        // perform tls handshake
+                        if(BIO_do_handshake(c_bio) <= 0){
+
+                            BIO_free_all(c_bio); // this function throws segmentation fault when called without any network connection but to get here the connection has been established
+                            strcpy(error_buffer, "TLS handshake failed");          
                             error = true;
                         }
-                        else{
-                            std::cout << "SSL handshake successful"<< std::endl;
-                        }
-
-                        // we fetch the path for this connection
 
                         if(!error){
                         // continue if no error
+                            
+                            // we check the protocol that was negotiated, if it is not http2 we disconnect our BIO handle and set our error flag
+                            unsigned int protocol_len = 0;
+                            const unsigned char* protocol = nullptr;
 
-                            // we check if a forward slash was found after the last colon, if none was we connect to the default root path else the forward slash till the end of the url string is the path
-                            std::string_view path = (base_url_end_index != std::string_view::npos) ? url.substr(base_url_end_index) : "/";
+                            SSL_get0_alpn_selected(c_ssl, &protocol, &protocol_len);
 
-                            // copy the channel path parameter into the channel path array
-                            int path_string_len = path.size();
-                            
-                            if(path_string_len < path_static_array_length){ // we can store the path in the static array if this condition is true
-                                
-                                path.copy(c_path_static, path_string_len); // copy the path into the static array
-                                c_path_static[path_string_len] = '\0'; // null-terminate the array
-                                
-                                c_path = c_path_static;
-                                
+                            if(protocol_len != 2 || memcmp(protocol, "h2", 2) != 0){
+
+                                strcpy(error_buffer, "h2 protocol was not negotiated");
+
+                                error = true;
+
+                                // we reset our bio
+                                BIO_reset(c_bio);
                             }
-                            else if(path_string_len < size_of_allocated_path_memory){ // allocated memory is large enough
-                                
-                                path.copy(c_path_new, path_string_len); // copy the path into the allocated array
-                                c_path_new[path_string_len] = '\0'; // null-terminate the array
-                                
-                                c_path = c_path_new;
-                                
+
+                            // only continue if no error
+                            if(!error){
+
+                                // we set our http headers
+
+                                // we set our method pseudo header with nullptr value so we can get the index to update it with
+                                method_index = set_header(":method", nullptr);
+
+                                // we set our path pseudo header with nullptr value so we can get the index to update it with
+                                path_index = set_header(":path", nullptr);
+
+                                // we set our scheme pseudo header - this doesn't change after connecting to the server
+                                set_header(":scheme", const_cast<char*>("https"));
+
+                                // we set our authority pseudo header - this also doesn't change after connecting to the server
+                                set_header(":authority", c_host);
+
                             }
-                            else{ // neither static or already allocated memory is large enough, we test the two possible cases 
-                                
-                                if(c_path_new == NULL){ //memory has not been allocated yet
-                                
-                                    c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
-                                
-                                    if(c_path_new == NULL){
-                                    
-                                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
-                                        
-                                        error = true;
-                                        
-                                    }
-                                    else{ 
-                                        
-                                        size_of_allocated_path_memory = path_string_len + 1;
-                                        
-                                        path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                                
-                                        c_path_new[path_string_len] = '\0'; // null-terminate the array
-                                
-                                        c_path = c_path_new;
-                                
-                                    }
-                                    
-                                }
-                                else{ // memory has been allocated but is still not sufficient
-                                    
-                                    delete [] c_path_new; // delete already allocated memory
-                                    
-                                    c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
-                                
-                                    if(c_path_new == NULL){
-                                    
-                                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
-                                        
-                                        error = true;
-                                        
-                                    }
-                                    else{ 
-                                        
-                                        size_of_allocated_path_memory = path_string_len + 1;
-                                        
-                                        path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                                
-                                        c_path_new[path_string_len] = '\0'; // null-terminate the array
-                                
-                                        c_path = c_path_new;
-                                
-                                    }
-                                    
-                                }
-                                
-                            }
-                            
-                            if(!error){ // only continue if no error
-                            
-                            }
+
                         }
                     }
                 }
@@ -732,7 +750,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
     }
     else{ // not a valid http endpoint
         
-        strncpy(error_buffer, "Supplied URL parameter is not a valid HTTP endpoint", error_buffer_array_length);
+        strcpy(error_buffer, "Supplied URL parameter is not a valid https endpoint");
                 
         error = true;
         
