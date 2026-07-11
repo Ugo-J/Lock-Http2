@@ -194,7 +194,7 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url){
                 // we append our port number - we use strcat here because the array length check already checks that we have enough space in the array to accomodate for the port number
                 strcat(c_url, ":443");
 
-                // set the websocket url(port included)
+                // set the https url(port included)
                 BIO_set_conn_hostname(c_bio, c_url);
                 
                 // set SSL mode to retry automatically should SSL connection fail
@@ -327,7 +327,7 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url){
                     }
                     else{
                         
-                        strcpy(error_buffer, "Error connecting to WebSocket host ");
+                        strcpy(error_buffer, "Error connecting to https host ");
                     
                         error = true;
 
@@ -842,7 +842,7 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(){
 template <typename T>
 lock_http2_client_nb_crtp<T>::~lock_http2_client_nb_crtp(){
     
-    // close the websocket connection if any
+    // close the https connection if any
     if(client_state == OPEN){
         
         close();
@@ -1116,7 +1116,7 @@ inline bool lock_http2_client_nb_crtp<T>::is_open(){
 }
 
 template <typename T>
-bool lock_http2_client_nb_crtp<T>::ping(){ // sends a ping on an established websocket connection
+bool lock_http2_client_nb_crtp<T>::ping(){ // sends a ping on an established https connection
     
     if(!error){ // only continue if no error
         
@@ -1357,7 +1357,7 @@ bool lock_http2_client_nb_crtp<T>::basic_read(){
 }
 
 template <typename T>
-bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a websocket connection by using the parameterless constructor, or to connect an already established websocket connection and lock client instance to a different websocket server, it can also be used to retry connecting an instance that encountered an error during connection
+bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a https connection by using the parameterless constructor, or to connect an already established https connection and lock client instance to a different https server, it can also be used to retry connecting an instance that encountered an error during connection
     
     if(client_state == CLOSED){
         
@@ -1372,11 +1372,8 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
         
         error = false; // sets the error flag to false first so the close function can run 
         
-        if(close()) // close the open websocket connection 
-            
-            error = false; // if the close function disconnects the connection because an unrecognised length was received, we need to set the error flag to 0 so that the rest of the connect function can proceed without hitch.
-          
-            // no need to memset since an unclean close sets the error flag but writes nothing to the error buffer
+        // we close the https connection
+        close();
             
     }
   
@@ -1433,7 +1430,7 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
                 
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
+                        strcpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ");
                         
                         error = true;
                         
@@ -1487,7 +1484,7 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
                 // we append our port number - we use strcat here because the array length check already checks that we have enough space in the array to accomodate for the port number
                 strcat(c_url, ":443");
 
-                // set the websocket url(port included)
+                // set the https url(port included)
                 BIO_set_conn_hostname(c_bio, c_url);
                 
                 // set SSL mode to retry automatically should SSL connection fail
@@ -1620,7 +1617,7 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
                     }
                     else{
                         
-                        strcpy(error_buffer, "Error connecting to WebSocket host ");
+                        strcpy(error_buffer, "Error connecting to https host ");
                     
                         error = true;
 
@@ -1698,11 +1695,8 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
         
         error = false; // sets the error flag to false first so the close function can run 
         
-        if(close()) // close the open websocket connection 
-            
-            error = false; // if the close function disconnects the connection because an unrecognised length was received, we need to set the error flag to 0 so that the rest of the connect function can proceed without hitch.
-          
-            // no need to memset since an unclean close sets the error flag but writes nothing to the error buffer
+        // we close the https connection
+        close();
             
     }
 
@@ -2544,11 +2538,15 @@ void lock_http2_client_nb_crtp<T>::unblock_sigpipe_signal(){
 }
 
 template <typename T>
-bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established websocket connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same websocket server using the connect function
+bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established https connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same https server using the connect function
 
     if(!error){ // only continue if no error
         
-        
+        // we call bio reset on our bio
+        BIO_reset(c_bio);
+
+        // we set our client state to closed
+        client_state = CLOSED;
                 
     }
     

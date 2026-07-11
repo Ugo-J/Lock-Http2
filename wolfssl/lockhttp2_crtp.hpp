@@ -1554,11 +1554,8 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
         
         error = false; // sets the error flag to false first so the close function can run 
         
-        if(close()) // close the open http connection 
-            
-            error = false; // if the close function disconnects the connection because an unrecognised length was received, we need to set the error flag to 0 so that the rest of the connect function can proceed without hitch.
-          
-            // no need to memset since an unclean close sets the error flag but writes nothing to the error buffer
+        // we close the https connection
+        close();
             
     }
   
@@ -1894,11 +1891,8 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
         
         error = false; // sets the error flag to false first so the close function can run 
         
-        if(close()) // close the open http connection 
-            
-            error = false; // if the close function disconnects the connection because an unrecognised length was received, we need to set the error flag to 0 so that the rest of the connect function can proceed without hitch.
-          
-            // no need to memset since an unclean close sets the error flag but writes nothing to the error buffer
+        // we close our https connection
+        close();
             
     }
 
@@ -2788,7 +2782,12 @@ template <typename T>
 bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established http connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same http server using the connect function
 
     if(!error){ // only continue if no error
-                
+        
+        // we disconnect our underlying connection
+        reset();
+
+        client_state = CLOSED;
+
     }
     
     return error; // returning an error of 1 from the close function just means that the close was not a clean one but it was successful nonetheless, and the close function does not write any message to the error buffer

@@ -109,7 +109,7 @@ private:
     static const int error_buffer_array_length = 256;
     char error_buffer[error_buffer_array_length] = {'\0'};
     bool error = false;
-    unsigned char client_state = CLOSED; // this variable is used to store the lock client state, OPEN meaning there is an active websocket connection and CLOSED meaning that there isn't 
+    unsigned char client_state = CLOSED; // this variable is used to store the lock client state, OPEN meaning there is an active https connection and CLOSED meaning that there isn't 
     
 // wolfssl Library instance variables    
 private:
