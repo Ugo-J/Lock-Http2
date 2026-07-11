@@ -1180,7 +1180,7 @@ bool lock_http2_client_nb::ping(){ // sends a ping on an established http connec
                     else{
 
                         // here wolfssl_read couldn't send any extra data
-                        strcpy(error_buffer, "Write failure while transmitting outbound queue.");
+                        strcpy(error_buffer, "Write failure while transmitting outbound queue in ping request.");
 
                         error = true;
                         
