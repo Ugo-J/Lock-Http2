@@ -746,8 +746,74 @@ lock_http2_client_nb::lock_http2_client_nb(){
     // initialise ssl ctx
     ssl_ctx = SSL_CTX_new(TLS_client_method());
 
-    // we set the application layer protocol for our ssl ctx to http2
-    SSL_CTX_set_alpn_protos(ssl_ctx, (const unsigned char *)"\x02h2", 3);
+    // NGHTTP2 INITIALISATION
+
+    // we set our nghttp2 callbacks
+
+    nghttp2_session_callbacks *callbacks = nullptr;
+
+    // we initialise our local callback function
+    int rv = nghttp2_session_callbacks_new(&callbacks);
+
+    if(rv != 0){
+
+        strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+        error = true;
+
+    }
+
+    // continue if no error
+    if(!error){
+
+        // Register our callbacks
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+        // now we initialise our session client
+        rv = nghttp2_session_client_new(&session, callbacks, this);
+
+        // our callbacks are copied internally into our session object so we delete the callback pointer here
+        nghttp2_session_callbacks_del(callbacks);
+
+        if(rv != 0){
+            
+            strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+            // we concatenate the nghttp2 specific error
+            strcat(error_buffer, nghttp2_strerror(rv));
+        
+            error = true;
+
+        }
+
+        // continue if no error
+        if(!error){
+
+            // we declare our nghttp2 settings struct and set our max concurrent streams in it
+            nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+            // we submit our settings
+            rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                // we concatenate the nghttp2 specific error
+                strcat(error_buffer, nghttp2_strerror(rv));
+            
+                error = true;
+
+            }
+            
+            // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+        }
+
+    }
     
 }
 
@@ -760,18 +826,14 @@ lock_http2_client_nb::~lock_http2_client_nb(){
         close();
         
     }
+
+    // we free our nghttp2 session
+    nghttp2_session_del(session);
     
     // free url heap memory - this only runs if dynamic memory allocation is used to store the url
     if(!(c_url_new == NULL)){
         
         delete [] c_url_new;
-        
-    }
-    
-    // free path heap memory if the path string was stored in dynamic memory
-    if(!(c_path_new == NULL)){
-        
-        delete [] c_path_new;
         
     }
     
@@ -781,29 +843,19 @@ lock_http2_client_nb::~lock_http2_client_nb(){
         delete [] c_host_new;
         
     }
+
+    // free the ssl bio chain
+    BIO_free_all(c_bio);
     
-    // free upgrade request string heap memory if upgrade request string was stored in dynamic memory
-    if(!(upgrade_request_new == NULL)){
-        
-        delete [] upgrade_request_new;
-        
-    }
-    
-    if(c_ssl != NULL && c_url != NULL){// this would mean that the object is an ssl bio
-        
-        BIO_free_all(c_bio); // frees the ssl bio chain
-    }
-    
-    if(send_data_new != NULL){
-        
-        delete [] send_data_new; // free the memory used if the send string is stored on the heap
-        
-    }
-    
-    if (data_array_new != NULL){
-        
-        delete [] data_array_new; // free the memory used to receive data
-        
+    // we free all allocated data memory if any - heap memory for data starts from index NUM_OF_STATIC_ARRAYS of our metadata array
+    for(int i = NUM_OF_STATIC_ARRAYS; i<MAX_CONCURRENT_STREAMS; i++){
+
+        // end the loop if we reach a nullptr
+        if(metadata[i].data_array == nullptr) break;
+
+        // we free this memory
+        delete [] metadata[i].data_array;
+
     }
     
 }
