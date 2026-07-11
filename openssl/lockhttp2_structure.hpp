@@ -1,4 +1,4 @@
-using lock_function = std::function<int(char*, int, int)>;
+using lock_function = std::function<int(char*, int, int, int)>;
 using lock_header_function = std::function<int(const char*, size_t, const char*, size_t, int)>;
 
 // non blocking lock client

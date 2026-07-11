@@ -1,16 +1,16 @@
 // non blocking lock client
 template <typename T>
-class lock_http2_client_nb {
+class lock_http2_client_nb_crtp {
     
 public:
     
     //constructors
-    lock_http2_client_nb(std::string_view url);
-    lock_http2_client_nb(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
-    lock_http2_client_nb(); // parameterless constructor
+    lock_http2_client_nb_crtp(std::string_view url);
+    lock_http2_client_nb_crtp(std::string_view url, in_addr* interface_address, char* interface_name); // constructor that binds to a particular interface before connection
+    lock_http2_client_nb_crtp(); // parameterless constructor
     
     // destructor
-    ~lock_http2_client_nb();
+    ~lock_http2_client_nb_crtp();
 
 public:
     
@@ -25,16 +25,12 @@ public:
     char* get_error_message();
     bool basic_read();
     bool clear(); // this function is used to clear the error flags of lock clients in open state, error flags of lock clients in closed state can only be cleared by calling the connect function
-    inline static int default_receive(char*, int, int, int); // default receive function called by basic read
-    inline static int default_header_receive(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id); // default header receive function called after every received header
-    void set_receive_function(lock_function fn);
-    void set_header_receive_function(lock_header_function fn);
 
 private:
 // pointers to receive functions
 
     // recv data function
-    int recv_data(char*, int, int, int);
+    int recv_data(char* data, int length_of_data, int length_of_data_array, int user_id);
 
     // recv header function
     int recv_header(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id);
