@@ -1125,7 +1125,7 @@ bool lock_http2_client_nb::ping(){ // sends a ping on an established http connec
 
         // getting here the ping was submitted successfully to the nghttp2 session so now we send it
 
-        // we serialise and send out our ping request in this loop
+        // we serialise and send out our request in this loop
         while(true){
 
             // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
@@ -1136,7 +1136,7 @@ bool lock_http2_client_nb::ping(){ // sends a ping on an established http connec
             
             if(pending_bytes < 0){
 
-                strcpy(error_buffer, "nghttp2 engine serialization error in ping request: ");
+                strcpy(error_buffer, "nghttp2 engine serialization error: ");
 
                 // we concatenate the nghttp2 specific error
                 strcat(error_buffer, nghttp2_strerror(pending_bytes));
@@ -1161,7 +1161,7 @@ bool lock_http2_client_nb::ping(){ // sends a ping on an established http connec
             // keep polling till we have sent the entire frame
             while(len < pending_bytes){
 
-                int64_t local_len = wolfSSL_write(c_ssl, data_ptr, pending_bytes - len);
+                int64_t local_len = BIO_write(c_bio, data_ptr, pending_bytes - len);
 
                 if(local_len > 0){
 
@@ -1172,10 +1172,7 @@ bool lock_http2_client_nb::ping(){ // sends a ping on an established http connec
                 }
                 else{
 
-                    // we get the error message
-                    int err = wolfSSL_get_error(c_ssl, local_len);
-
-                    if(err == WOLFSSL_ERROR_WANT_WRITE || err == WOLFSSL_ERROR_WANT_READ){
+                    if(BIO_should_retry(c_bio)){
 
                         continue;
 
@@ -1183,7 +1180,7 @@ bool lock_http2_client_nb::ping(){ // sends a ping on an established http connec
                     else{
 
                         // here wolfssl_read couldn't send any extra data
-                        strcpy(error_buffer, "Write failure while transmitting outbound queue in ping request.");
+                        strcpy(error_buffer, "Write failure while transmitting outbound queue.");
 
                         error = true;
                         
@@ -1276,87 +1273,86 @@ bool lock_http2_client_nb::send(char* path, char* payload_data, int method, int 
         
             error = true;
 
+            return error;
+
         }
 
-        // continue if on error
-        if(!error){
+        // getting the the request was successfully submitted to the nghttp2 session so now we send it
 
-            // we serialise and send out our request in this loop
-            while(true){
+        // we serialise and send out our request in this loop
+        while(true){
 
-                // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
-                uint8_t* data_ptr = nullptr;
+            // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
+            uint8_t* data_ptr = nullptr;
 
-                // we call session mem send2 to serialise our data, this function calls our data provider callback which copies our supplied data to the ession's intrnal buffers
-                ssize_t pending_bytes = nghttp2_session_mem_send2(session, const_cast<const uint8_t**>(&data_ptr));
-                
-                if(pending_bytes < 0){
-
-                    strcpy(error_buffer, "nghttp2 engine serialization error: ");
-
-                    // we concatenate the nghttp2 specific error
-                    strcat(error_buffer, nghttp2_strerror(pending_bytes));
-                
-                    error = true;
-
-                    break;
-                        
-                }
+            // we call session mem send2 to serialise our data, this function calls our data provider callback which copies our supplied data to the ession's intrnal buffers
+            ssize_t pending_bytes = nghttp2_session_mem_send2(session, const_cast<const uint8_t**>(&data_ptr));
             
-                if(pending_bytes == 0){
+            if(pending_bytes < 0){
 
-                    break; // no more frames left to build for this transmission block so we break out of our serialisation loop
+                strcpy(error_buffer, "nghttp2 engine serialization error: ");
+
+                // we concatenate the nghttp2 specific error
+                strcat(error_buffer, nghttp2_strerror(pending_bytes));
+            
+                error = true;
+
+                break;
                     
-                }
+            }
+        
+            if(pending_bytes == 0){
 
-                // block SIGPIPE signal before attempting to send data, just incase the connection is closed
-                block_sigpipe_signal();
+                break; // no more frames left to build for this transmission block so we break out of our serialisation loop
                 
-                int64_t len = 0;
+            }
 
-                // keep polling till we have sent the entire frame
-                while(len < pending_bytes){
+            // block SIGPIPE signal before attempting to send data, just incase the connection is closed
+            block_sigpipe_signal();
+            
+            int64_t len = 0;
 
-                    int64_t local_len = BIO_write(c_bio, data_ptr, pending_bytes - len);
+            // keep polling till we have sent the entire frame
+            while(len < pending_bytes){
 
-                    if(local_len > 0){
+                int64_t local_len = BIO_write(c_bio, data_ptr, pending_bytes - len);
 
-                        len += local_len;
-                                
-                        data_ptr += local_len;
+                if(local_len > 0){
+
+                    len += local_len;
+                            
+                    data_ptr += local_len;
+
+                }
+                else{
+
+                    if(BIO_should_retry(c_bio)){
+
+                        continue;
 
                     }
                     else{
 
-                        if(BIO_should_retry(c_bio)){
+                        // here wolfssl_read couldn't send any extra data
+                        strcpy(error_buffer, "Write failure while transmitting outbound queue.");
 
-                            continue;
+                        error = true;
+                        
+                        unblock_sigpipe_signal();
 
-                        }
-                        else{
-
-                            // here wolfssl_read couldn't send any extra data
-                            strcpy(error_buffer, "Write failure while transmitting outbound queue.");
-
-                            error = true;
-                            
-                            unblock_sigpipe_signal();
-
-                            // we return from this function
-                            return error;
-                            
-                        }
-
+                        // we return from this function
+                        return error;
+                        
                     }
 
                 }
 
-                // getting here the send request succeeds
-
-                // we unblock the sigpipe signal
-                unblock_sigpipe_signal();
-
             }
+
+            // getting here the send request succeeds
+
+            // we unblock the sigpipe signal
+            unblock_sigpipe_signal();
 
         }
 
