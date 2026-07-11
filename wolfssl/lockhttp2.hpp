@@ -1255,9 +1255,7 @@ inline char* lock_http2_client_nb::get_error_message(){ // returns the error mes
 
 inline bool lock_http2_client_nb::is_open(){
 
-    if(client_state == OPEN) return true;
-    else return false;
-    
+    return (client_state == OPEN) ? true : false;
 }
 
 bool lock_http2_client_nb::ping(){ // sends a ping on an established http connection

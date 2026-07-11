@@ -1262,8 +1262,7 @@ inline char* lock_http2_client_nb_crtp<T>::get_error_message(){ // returns the e
 template <typename T>
 inline bool lock_http2_client_nb_crtp<T>::is_open(){
 
-    if(client_state == OPEN) return true;
-    else return false;
+    return (client_state == OPEN) ? true : false;
     
 }
 
