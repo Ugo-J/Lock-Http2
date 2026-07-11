@@ -2005,18 +2005,18 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
 
     // we create the socket the BIO structure would use
     int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
+    if(sock < 0){
         std::cout<<"Error creating socket"<<std::endl;
-        strncpy(error_buffer, "Error creating socket", error_buffer_array_length);          
+        strcpy(error_buffer, "Error creating socket");          
         error = true;
         return -1;
     }
 
     // Bind to a specific device
-    if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interface_name, strlen(interface_name)) < 0) {
+    if(setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interface_name, strlen(interface_name)) < 0){
         std::cout<<"Error binding socket to device"<<std::endl;
         perror("setsockopt(SO_BINDTODEVICE)");
-        strncpy(error_buffer, "Error binding socket to device", error_buffer_array_length);          
+        strcpy(error_buffer, "Error binding socket to device");          
         error = true;
         ::close(sock);
         return -1;
@@ -2044,9 +2044,9 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
     hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
 
     // Perform DNS resolution
-    if (getaddrinfo(hostname, port, &hints, &res) != 0) {
+    if(getaddrinfo(hostname, port, &hints, &res) != 0) {
         std::cout<<"Error resolving hostname: "<<hostname<<std::endl;
-        strncpy(error_buffer, "Error resolving hostname", error_buffer_array_length);          
+        strcpy(error_buffer, "Error resolving hostname");          
         error = true;
         return -1;
     }
@@ -2068,9 +2068,9 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
     if(res != NULL)
         freeaddrinfo(res); // Free the addrinfo structure if non null
 
-    if (sock < 0) {
+    if(sock < 0){
         std::cout<<"Failed to connect to "<<hostname<<':'<<port<<std::endl;
-        strncpy(error_buffer, "Failed to connect to host", error_buffer_array_length);          
+        strcpy(error_buffer, "Failed to connect to host");          
         error = true;
         return -1;
     }
@@ -2079,7 +2079,425 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
     int flags = fcntl(sock, F_GETFL, 0);
     fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
-    return sock; // Return the connected socket
+    // now we return the connected socket
+    return sock;
+}
+
+int lock_http2_client_nb::acquire(){
+
+    // the builtin ctz function is undefined when passed a parameter of 0 so we check that the static mask isn't 0
+
+    if(static_mask != 0){
+
+        // we fetch the lowest free bit in our bit mask
+        int slot = __builtin_ctz(static_mask);
+
+        // we mark the acquired slot as in use
+        static_mask &= ~(1u << slot);
+
+        // we set up the metadata slot we just acquired
+
+        // we first check if this memort location has been initialised before
+        if(metadata[slot].data_array == nullptr){
+
+            // getting here this location hasn't been initialised before so we initialise it
+
+            // we set the data array pointer
+            metadata[slot].data_array = static_array[slot];
+
+            // we set the cursor
+            metadata[slot].cursor = static_array[slot];
+
+            // we set the array size
+            metadata[slot].array_size = STATIC_ARRAY_SIZE;
+
+            // we set the array index both in the metadata array and the data array array because these are two parallel arrays
+            metadata[slot].array_index = slot;
+
+        }
+        else{
+
+            // getting here this location has been initialised before so we just reset our cursor
+            metadata[slot].cursor = static_array[slot];
+
+        }
+
+        return slot;
+
+    }
+
+    // getting here the static array was full so we check the heap array
+
+    // the builtin ctz function is undefined when passed a parameter of 0 so we check that the heap mask isn't 0
+
+    if(heap_mask != 0){
+
+        // we fetch the lowest free bit in our bit mask
+        int slot = __builtin_ctzll(heap_mask);
+
+        // we mark the acquired slot as in use
+        heap_mask &= ~(1ull << slot);
+
+        // we add NUM_OF_STATIC_ARRAYS to our acquired slot because heap mask metadata entries start at index NUM_OF_STATIC_ARRAYS
+        slot += NUM_OF_STATIC_ARRAYS;
+
+        // we initialise our slot location
+
+        // we check if memory has been allocated in this metadata location before
+        if(metadata[slot].data_array == nullptr){
+
+            // getting here memory has not been allocated to this location before so we allocate it
+
+            // we allocate memory for our data array pointer - we size the allocated memory just like our static array arrays
+            metadata[slot].data_array = new(std::nothrow) char[STATIC_ARRAY_SIZE]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+
+            // we check that data was indeed allocated ad return if the allocation fails
+            if(metadata[slot].data_array == nullptr) return -1;
+
+            // we set the cursor
+            metadata[slot].cursor = metadata[slot].data_array;
+
+            // we set the array size
+            metadata[slot].array_size = STATIC_ARRAY_SIZE;
+
+            // we set the array index both in the metadata array and the data array array becasue these are two parallel arrays
+            metadata[slot].array_index = slot;
+
+        }
+        else{
+
+            // getting here memory has been allocated before for this location so we just reset its cursor other variables remain valid
+            metadata[slot].cursor = metadata[slot].data_array;
+
+        }
+
+        return slot;
+
+    }
+
+    return -1;
+
+}
+
+int lock_http2_client_nb::acquire_heap(int sz){
+
+    // we first check that we have a free heap slot
+    if(heap_mask == 0) return -1;
+
+    // we get a local copy of our heap mask
+    uint64_t free_slots = heap_mask;
+
+    while(free_slots != 0){
+
+        // we fetch our next free heap slot
+        int bit_index = __builtin_ctzll(free_slots);
+        int slot = bit_index + NUM_OF_STATIC_ARRAYS;
+
+        // we check if memory has already been allocated for this slot
+        if(metadata[slot].data_array == nullptr){
+
+            // getting here memory has not been allocated for this slot so we allocate its required memory, initialise its data members and return this slot
+
+            // we allocate memory for our data array pointer - we use the supplied parameter as the heap array size
+            metadata[slot].data_array = new(std::nothrow) char[sz]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+
+            // we check that data was indeed allocated ad return if the allocation fails
+            if(metadata[slot].data_array == nullptr) return -1;
+
+            // we set the cursor
+            metadata[slot].cursor = metadata[slot].data_array;
+
+            // we set the array size
+            metadata[slot].array_size = sz;
+
+            // we set the array index both in the metadata array and the data array array becasue these are two parallel arrays
+            metadata[slot].array_index = slot;
+
+            // we mark this slot as in use
+            heap_mask &= ~(1ull << bit_index);
+
+            // we return this slot
+            return slot;
+
+        }
+
+        // getting here memory has already been allocated for this slot so we check if the allocated memory for this slot is >= our acquire heap parameter
+        if(metadata[slot].array_size >= sz){
+
+            // getting here this array size ia >= our sz parameter so we reset our cursor mark this slot as in use and return it
+
+            // we reset the cursor
+            metadata[slot].cursor = metadata[slot].data_array;
+
+            // we mark this slot as in use
+            heap_mask &= ~(1ull << (slot - NUM_OF_STATIC_ARRAYS));
+
+            // we return this slot
+            return slot;
+
+        }
+
+        free_slots &= ~(1ull << bit_index);
+
+    }
+
+    // getting here there is no free slot with size >= sz and no empty slot we can use so we return -1
+    return -1;
+
+}
+
+void lock_http2_client_nb::release(int slot){
+
+    // we first check if the slot to release is a static slot or a heap slot
+    if(slot < NUM_OF_STATIC_ARRAYS){
+
+        static_mask |= (1u << slot);
+    }
+    else{
+
+        heap_mask |= (1ull << (slot - NUM_OF_STATIC_ARRAYS));
+    }
+
+}
+
+int lock_http2_client_nb::set_header(const char* name, char* value){
+
+    // we check if the name parameter is null if it is we return immediately - the value parameter on the other hand permits a null value - a null value parameter just creates the header entry and returns the int index the application can pass to update header to update the header in place
+    if(name == nullptr) return -1;
+
+    // we get the length of the header name
+    int name_len = strlen(name);
+
+    // we get the length of the header value
+    int value_len = (value != nullptr) ? strlen(value) : 0;
+
+    // we first check that our header name length is not longer than our header name array length
+    if(name_len > MAX_HEADER_ITEM_LENGTH - 1) return -1;
+
+    // array for holding our lower case name
+    char lowercase_name[MAX_HEADER_ITEM_LENGTH];
+
+    // we use a lambda to convert our name parameter to lower case
+    [](char* out, const char* in){ while((*out++ = tolower(*in++))); }(lowercase_name, name);
+
+    // we first check if this header exists already on our headers array, if it does we just update its value
+    for(int i = 0; i<num_of_headers; i++){
+
+        // we compare the headers based on name length first
+        if(hdrs[i].namelen == static_cast<size_t>(name_len)){
+
+            // now we compare the characters using memcmp - h_name[i] is the char array whose pointer is sored in hdrs[i].name so we compare the name directly
+            if(!memcmp(lowercase_name, h_name[i], name_len)){
+
+                // we check if the supplied value was not null before we copy the value
+                if(value != nullptr){
+
+                    // we check if the header would fit into our header value location - we compare directly to avoid the use of strncpy
+                    if(value_len > MAX_HEADER_ITEM_LENGTH - 1) return -1;
+
+                    // we copy this value into our headers array
+                    strcpy(h_value[i], value);
+
+                    // we update our nghttp2 header value pointer back to this header value location just in case we have used update header to update its value pointer
+                    hdrs[i].value = reinterpret_cast<uint8_t*>(h_value[i]);
+
+                    // our namelen size remains the same so we only update our valuelen size
+                    hdrs[i].valuelen = static_cast<size_t>(value_len);
+
+                    // our nghttp2 header flags remain no copy for name and value so we leave as is
+
+                }
+
+                // we return the index to this header value in the h_value array
+                return i;
+
+                // we don't increment our num of headers because this header was already present in our headers array
+
+            }
+
+        }
+
+    }
+
+    // getting here this header isn't already in our headers array so before we enter it we first check if there is enough header space
+    if(num_of_headers >= MAX_NUM_OF_HEADERS) return -1;
+
+    // getting here we still have empty slots in our headers array
+
+    // we don't check the header name length again as we already checked it before converting it to lower case at the start of this function
+
+    // we copy our header name
+    strcpy(h_name[num_of_headers], lowercase_name);
+
+    // we point our nghttp2 hdrs name pointer to our header name
+    hdrs[num_of_headers].name = reinterpret_cast<uint8_t*>(h_name[num_of_headers]);
+
+    // we update our namelen variable in our nghttp2 header struct
+    hdrs[num_of_headers].namelen = static_cast<size_t>(name_len);
+
+    // we only copy our value to our h value array if the supplied value is not null
+    if(value != nullptr){
+
+        // we copy our header value - we first check that our header value length is not longer than our header value array length
+        if(value_len > MAX_HEADER_ITEM_LENGTH - 1) return -1;
+
+        // we copy our header value
+        strcpy(h_value[num_of_headers], value);
+
+    }
+
+    // we point our nghttp2 hdrs value pointer to our header value
+    hdrs[num_of_headers].value = reinterpret_cast<uint8_t*>(h_value[num_of_headers]);
+
+    // we update our valuelen variable in our nghttp2 header struct
+    hdrs[num_of_headers].valuelen = static_cast<size_t>(value_len);
+
+    // we set our nghttp2 hdrs flag to no copy to ensure that the headers are not copied internally
+    hdrs[num_of_headers].flags = NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE;
+
+    // we return our header index and increment our num of headers in the same line
+    return num_of_headers++;
+
+}
+
+char* lock_http2_client_nb::get_header(char* name){
+
+    // we check if the supplied name is a nullptr, if so we return immediately
+    if(name == nullptr) return nullptr;
+
+    // we get the length of the header name
+    int name_len = strlen(name);
+
+    // we first check that our header name length is not longer than our header name array length
+    if(name_len > MAX_HEADER_ITEM_LENGTH - 1) return nullptr;
+
+    // array for holding our lower case name
+    char lowercase_name[MAX_HEADER_ITEM_LENGTH];
+
+    // we use a lambda to convert our name parameter to lower case
+    [](char* out, const char* in){ while((*out++ = tolower(*in++))); }(lowercase_name, name);
+
+    // we check for this header in our headers array
+    for(int i = 0; i<num_of_headers; i++){
+
+        // we compare the headers based on name length first
+        if(hdrs[i].namelen == static_cast<size_t>(name_len)){
+
+            // now we compare the characters using memcmp - h_name[i] is the char array whose pointer is sored in hdrs[i].name so we compare the name directly
+            if(!memcmp(lowercase_name, h_name[i], name_len)){
+
+                // we return the header value pointer of this header
+                return reinterpret_cast<char*>(hdrs[i].value);
+
+            }
+
+        }
+
+    }
+
+    // getting here this header was not found in our headers array so we return
+    return nullptr;
+
+}
+
+char* lock_http2_client_nb::get_header_ptr(int index){
+
+    // return nullptr if the supplied index is invalid or empty - this prevents us from updating a header value for a header we are not actively sending with our requests
+    if(index < 0 || index >= num_of_headers) return nullptr;
+
+    // we return the internal header pointer
+    return h_value[index];
+
+}
+
+int lock_http2_client_nb::update_header_length(int index, int length){
+
+    // return nullptr if the supplied index is invalid or empty - this prevents us from updating a header value for a header we are not actively sending with our requests
+    if(index < 0 || index >= num_of_headers) return -1;
+
+    // we update our hdrs value length or compute it from the corresponding h_value if it is not supplied
+    hdrs[index].valuelen = (length >= 0) ? static_cast<size_t>(length) : strlen(h_value[index]);
+
+    // we point our nghttp hdrs value for this index to our h_value index just incase the value pointer has been reassigned by calling update_header
+    hdrs[index].value = reinterpret_cast<uint8_t*>(h_value[index]);
+
+    return 0;
+
+}
+
+char* lock_http2_client_nb::update_header(char* value, int index){
+
+    // return nullptr if the supplied value is null
+    if(value == nullptr) return nullptr;
+
+    // return nullptr if the supplied index is invalid or empty
+    if(index < 0 || index >= num_of_headers) return nullptr;
+
+    // we update the nghttp2 value pointer for this header to the supplied value
+    hdrs[index].value = reinterpret_cast<uint8_t*>(value);
+
+    // we update the valuelen for this header
+    hdrs[index].valuelen = static_cast<size_t>(strlen(value));
+
+    // we return the value pointer to indicate success
+    return value;
+
+}
+
+int lock_http2_client_nb::clear_header(int index){
+
+    // this function clears a single header from the header list
+
+    // we check if the supplied index is valid and non empty
+    if(index < 0 || index >= num_of_headers) return -1;
+
+    int last_index = num_of_headers - 1;
+
+    // we check if this is the last header in our header array or not
+    if(index < last_index){
+
+        // getting here this isn't the last header so we move the headers after this forward by copying the last entries
+
+        // we copy the last header name into this location
+        strcpy(h_name[index], h_name[last_index]);
+
+        // we copy the last header value to this index location
+        strcpy(h_value[index], h_value[last_index]);
+
+        // we update our hdrs array
+        hdrs[index] = hdrs[last_index];
+
+        // we reassign the name pointer of our hdrs entry to point to its new name location
+        hdrs[index].name = reinterpret_cast<uint8_t*>(h_name[index]);
+
+        // now we check the hdrs value pointer, we only reassign it if it is pointing to its corresponding location in the h_value array, if it is pointing to an external array by virtue of calling update header on it we don't bother updating it because the location it points to would still be valid for its context
+        if(hdrs[index].value == reinterpret_cast<uint8_t*>(h_value[last_index])) hdrs[index].value = reinterpret_cast<uint8_t*>(h_value[index]);
+
+    }
+
+    // we decrement our num_of_headers
+    num_of_headers--;
+
+    return 0;
+
+}
+
+int lock_http2_client_nb::clear_headers(){
+
+    // this function clears all user supplied headers leaving only the pseudo headers, to do this we just set our num of headers to 4 which is the 4 pseudo headers we use: path, method, scheme and authority
+    num_of_headers = 4;
+
+    return 0;
+
+}
+
+int lock_http2_client_nb::clear_all_headers(){
+
+    // this is an internal function that clears all headers including pseudo headers by setting our num of headers to 0
+    num_of_headers = 0;
+
+    return 0;
+
 }
 
 void lock_http2_client_nb::block_sigpipe_signal(){

@@ -2705,7 +2705,7 @@ int lock_http2_client_nb::clear_header(int index){
 
 int lock_http2_client_nb::clear_headers(){
 
-    // this function clears all user supplied headers leaving only the pseudo headers, to do this we just set our um of headers to 4 which is the 4 pseudo headers we use: path, method, scheme and authority
+    // this function clears all user supplied headers leaving only the pseudo headers, to do this we just set our num of headers to 4 which is the 4 pseudo headers we use: path, method, scheme and authority
     num_of_headers = 4;
 
     return 0;
