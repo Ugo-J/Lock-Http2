@@ -97,7 +97,7 @@ private:
     uint64_t size_of_allocated_host_memory = 0;
     char* c_host_new = NULL;
     char* c_host = NULL;
-    static const int error_buffer_array_length = 256;
+    static const int error_buffer_array_length = 256 + 128; // we add an extra 128 bytes to cover for our library error message before we append openssl error, this is because openssl expects the error buffer passed to it to have at least 256 bytes of space
     char error_buffer[error_buffer_array_length] = {'\0'};
     bool error = false;
     unsigned char client_state = CLOSED; // this variable is used to store the lock client state, OPEN meaning there is an active http2 connection and CLOSED meaning that there isn't 
