@@ -878,6 +878,209 @@ lock_http2_client_nb::~lock_http2_client_nb(){
     
 }
 
+int lock_http2_client_nb::on_frame_recv_cb(nghttp2_session *session, const nghttp2_frame *frame, void *user_data){
+
+    lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
+    return client->handle_frame_recv(frame);
+}
+
+int lock_http2_client_nb::on_data_chunk_recv_cb(nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_data){
+
+    lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
+    return client->handle_data_chunk(flags, stream_id, data, len);
+
+}
+
+int lock_http2_client_nb::on_stream_close_cb(nghttp2_session *session, int32_t stream_id, uint32_t error_code, void *user_data){
+
+    lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
+    return client->handle_stream_close(stream_id, error_code);
+}
+
+long lock_http2_client_nb::send_body_provider_cb(nghttp2_session *session, int32_t stream_id, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void *user_data){
+
+    const char* data_start = static_cast<const char*>(source->ptr);
+    int& remaining_bytes = source->fd; // we use fd to keep track of how much data we still have to send
+
+    if(remaining_bytes == 0){
+
+        *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+        return 0;
+
+    }
+
+    // we copy our data into the nghttp2 internal buffer denoted by buf, the supplied length parameter holds the array size of the nghttp internal buffer so it is the max amount of data we can copy into that buffer
+    size_t to_copy = std::min(length, static_cast<size_t>(remaining_bytes));
+    std::memcpy(buf, data_start, to_copy);
+    
+    // we increment our source ptr so we start copying from the next unsent byte when next this callback is called
+    source->ptr = const_cast<char*>(data_start + to_copy);
+
+    // we decrement our remaining bytes which is a reference to source->fd
+    remaining_bytes -= to_copy;
+
+    if(remaining_bytes == 0){
+
+        *data_flags |= NGHTTP2_DATA_FLAG_EOF;
+
+    }
+
+    return static_cast<long>(to_copy);
+}
+
+int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data){
+
+    lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
+
+    // we fetch our stream data for this request
+    meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, frame->hd.stream_id));
+
+    return client->recv_header(reinterpret_cast<const char*>(name), namelen, reinterpret_cast<const char*>(value), valuelen, (stream_metadata != nullptr) ? stream_metadata->user_id : -1);
+
+}
+
+int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
+
+    // we use this switch case to handle different header types
+    /* switch(frame->hd.type){
+
+        case NGHTTP2_HEADERS:
+
+            if(frame->hd.flags & NGHTTP2_FLAG_END_STREAM){
+
+                std::cout<<"[Stream "<<frame->hd.stream_id<<"] Response finished (Headers only).\n";
+            }
+
+            break;
+
+        case NGHTTP2_SETTINGS:
+
+            std::cout<<"SETTINGS frame received from server.\n";
+            break;
+
+        case NGHTTP2_PING:
+
+            std::cout<<"PING frame received from server.\n";
+            break;
+
+    } */
+
+    return 0;
+}
+
+int lock_http2_client_nb::default_header_receive(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id){
+
+    // std::cout<<"[User Id "<<user_id<<"] Header -> "<<name<<": "<<value<<"\n";
+
+    return 0;
+
+}
+
+int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len){
+
+    // we fetch our stream data for this request
+    meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, stream_id));
+
+    // we check that our stream metadata isn't null, if it is we run nothing and just return
+    if(stream_metadata != nullptr){
+
+        // getting here our stream metadata isn't null so we continue
+
+        // we fetch the length of data stored for this stream which we get by computing cursor - data array
+        int length_of_data = stream_metadata->cursor - stream_metadata->data_array;
+
+        // we compute the capacity needed to store this data'
+        int capacity = length_of_data + static_cast<int>(len);
+
+        // now we check if the capacity needed is > our data array capacity
+        if(capacity > stream_metadata->array_size){
+
+            // getting here copying this data chunk to our data array would cause our data array to overflow so we allocate a capacity that is twice what we would need to store this data in our data array
+
+            // we fetch a new slot for this stream with enough capacity
+            int slot = acquire_heap(capacity * 2);
+
+            // we check if the acquire heap request was successful
+            if(slot < 0){
+
+                // getting here the acquire heap request failed so we free the current slot this thread uses and set the stream user data pointer to null so subsequent calls to handle data chunk ignores it
+
+                // we release the slot used by this stream
+                release(stream_metadata->array_index);
+
+                // we set the stream user data to nullptr
+                nghttp2_session_set_stream_user_data(session, stream_id, nullptr);
+
+                // we set our lock client error flag
+                strcpy(error_buffer, "Error acquiring heap slot for stream after exceeding initial slot capacity");
+
+                error = true;
+
+                // we return from this function
+                return -1;
+
+            }
+
+            // getting here the returned slot is valid so we copy our data to the new slot
+            std::memcpy(metadata[slot].data_array, stream_metadata->data_array, length_of_data);
+
+            // we increment our new slot cursor
+            metadata[slot].cursor += length_of_data;
+
+            // we copy our user supplied id to our new slot
+            metadata[slot].user_id = stream_metadata->user_id;
+
+            // we release the old slot used by this stream back to our data array
+            release(stream_metadata->array_index);
+
+            // we set the stream user data to the new slot
+            nghttp2_session_set_stream_user_data(session, stream_id, static_cast<void*>(&metadata[slot]));
+
+            // we point our local stream metadata pointer to this new slot so this function can continue seamlessly
+            stream_metadata = &metadata[slot];
+
+        }
+
+        // we copy this data into the data array for this stream using the cursor
+        std::memcpy(stream_metadata->cursor, data, len);
+
+        // we increment our cursor
+        stream_metadata->cursor += len;
+
+    }
+    
+    return 0;
+
+}
+
+int lock_http2_client_nb::handle_stream_close(int32_t stream_id, uint32_t error_code){
+
+    if(error_code == NGHTTP2_NO_ERROR){
+
+        // std::cout<<"[Stream "<<stream_id<<"] Closed successfully.\n";
+
+        // we fetch our stream metadata for this stream
+        meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, stream_id));
+
+        // we null terminate our received data
+        *(stream_metadata->cursor) = '\0';
+
+        // since this is the end of our stream we call our recv data function - our data length is gotten by cursor - data array
+        recv_data(stream_metadata->data_array, stream_metadata->cursor - stream_metadata->data_array, stream_metadata->array_size, stream_metadata->user_id);
+
+        // now we release the data array we used for this stream, the data array slot is stored in the array index variable of the stream metadata
+        release(stream_metadata->array_index);
+
+    }
+    else{
+
+        std::cout<<"[Stream "<<stream_id<<"] Closed with error code: "<<error_code<<"\n";
+    }
+    
+    return 0;
+
+}
+
 inline bool lock_http2_client_nb::status(){ // returns the error status of a lock_http2_client instance
     
     return error;
@@ -920,250 +1123,88 @@ inline bool lock_http2_client_nb::clear(){ // clear the error flag of a lock cli
     
 }
 
-bool lock_http2_client_nb::send(std::string_view payload_data){ // sends data passed as parameter along an established websocket connection
+bool lock_http2_client_nb::send(char* path, char* payload_data, int method, int id){ // sends data passed as parameter along an established http connection
 
     if(!error){ // only continue if no error
+    
+        // we check that the supplied method int is within the valid range - we return true to indicate that this send failed but we don't set the error flag to true
+        if(method < 0 || method > std::size(methods) - 1) return true;
+
+        // we update our method pseudo header with the supplied method
+        update_header(const_cast<char*>(methods[method]), method_index);
+
+        // we update our path pseudo header with the supplied path
+        update_header(path, path_index);
+
+        // our scheme and authority pseudo headers remain constant so we don't update it
+
+        // we setup ad initialise our data provider
+        nghttp2_data_provider2 provider;
+        provider.source.ptr = const_cast<char*>(payload_data);
+        provider.source.fd = (payload_data != nullptr) ? strlen(payload_data) : 0; // we store our payload data size
+        provider.read_callback = send_body_provider_cb;
+
+        // we fetch our next free data array we would use to store this stream's response
+        int slot = acquire();
+
+        // we check that we acquired a valid slot
+        if(slot < 0){
+
+            strcpy(error_buffer, "Error acquiring data slot for http request");
+
+            error = true;
+
+            return error;
+
+        }
+
+        // getting here we have acquired an initialised data slot we now store the user supplied id in our metadata slot
+        metadata[slot].user_id = id;
+
+        // we submit our request and fetch the stream_id - we pas our metadata slot as a void pointer to this request
+        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, num_of_headers, (payload_data != nullptr) ? &provider : nullptr, static_cast<void*>(&metadata[slot]));
+
+        if(stream_id < 0){
+
+            strcpy(error_buffer, "Failed to submit request to session context: ");
+
+            // we concatenate the nghttp2 specific error
+            strcat(error_buffer, nghttp2_strerror(stream_id));
         
-        if(client_state == OPEN){ // only continue if client is in open state
-        
-            uint64_t payload_data_len = payload_data.size();
-            int i = 0; // variable for traversing the send data array
-            
-            if( (payload_data_len + biggest_header_len) < send_data_array_len ){ // static array is large enough
+            error = true;
+
+        }
+
+        // continue if on error
+        if(!error){
+
+            // we serialise and send out our request in this loop
+            while(true){
+
+                // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
+                uint8_t* data_ptr = nullptr;
+
+                // we call session mem send2 to serialise our data, this function calls our data provider callback which copies our supplied data to the ession's intrnal buffers
+                ssize_t pending_bytes = nghttp2_session_mem_send2(session, const_cast<const uint8_t**>(&data_ptr));
                 
-                send_data = (char*)send_data_static;
+                if(pending_bytes < 0){
+
+                    strcpy(error_buffer, "nghttp2 engine serialization error: ");
+
+                    // we concatenate the nghttp2 specific error
+                    strcat(error_buffer, nghttp2_strerror(pending_bytes));
                 
-                // set the first byte
-                send_data[i] = (unsigned char)(FIN_BIT_SET | RSV_BIT_UNSET_ALL | TEXT_FRAME);
-                i++;
-                
-                // set the second byte
-                if(payload_data_len < 126){ // if payload data length is less than 126 the next 7 bits represent the payload length
-                    
-                    send_data[i] = MASK_BIT_SET | (unsigned char)payload_data_len;
-                    i++;
-                    
-                }
-                else if( (payload_data_len > 125) && (payload_data_len < MAX_2BYTE_INT) ){ // next byte stores the value 126 and the next two bytes store the payload length
-                    
-                    send_data[i] = (unsigned char)(MASK_BIT_SET | (unsigned char)126);
-                    i++;
-                    
-                    send_data[i] = (0xFF00 & payload_data_len) >> 8;
-                    i++;
-                    
-                    send_data[i] = 0x00FF & payload_data_len;
-                    i++;
-                    
-                }
-                else if( (payload_data_len > (MAX_2BYTE_INT - 1)) && (payload_data_len < (MAX_8BYTE_INT - 1)) ){
-                    // next byte stores the value 127 and he next 8 bytes store the payload length
-                    
-                    send_data[i] = (unsigned char)(MASK_BIT_SET | (unsigned char)127);
-                    i++;
-                    
-                    send_data[i] = (0xFF00000000000000 & payload_data_len) >> 56 ; // the most significant bit cannot be 1 since we have the MAX_8BYTE_INT range test before executing this part of the code
-                    i++;
-                    
-                    send_data[i] = (0x00FF000000000000 & payload_data_len) >> 48;
-                    i++;
-                    
-                    send_data[i] = (0x0000FF0000000000 & payload_data_len) >> 40;
-                    i++;
-                    
-                    send_data[i] = (0x000000FF00000000 & payload_data_len) >> 32;
-                    i++;
-                    
-                    send_data[i] = (0x00000000FF000000 & payload_data_len) >> 24;
-                    i++;
-                    
-                    send_data[i] = (0x0000000000FF0000 & payload_data_len) >> 16;
-                    i++;
-                    
-                    send_data[i] = (0x000000000000FF00 & payload_data_len) >> 8;
-                    i++;
-                    
-                    send_data[i] = (0x00000000000000FF & payload_data_len); // no shift required
-                    i++;
-                    
-                    
-                }
-                else{ // ERROR!! Data length too large - execution never gets here normally because the static send data array is only a few kilobytes long and the payload data would have to be > 2^64 bytes in length to get here which would already fail the outer if statement for being > static send data array, the code is just added for completeness
-                    
-                    strncpy(error_buffer, "Send data length too large", error_buffer_array_length);
-                    
                     error = true;
+
+                    break;
+                        
+                }
+            
+                if(pending_bytes == 0){
+
+                    break; // no more frames left to build for this transmission block so we break out of our serialisation loop
                     
                 }
-
-                if(!error){ // only continue if no error
-                    
-                    for(int j = 0; j<mask_array_len; j++){
-                        
-                        send_data[i] = mask[j]; // store the mask in the send data array
-                        
-                        i++;
-                        
-                    }
-                    // mask storing end 
-                    
-                    // mask the data and store the masked data in the send data array 
-                    int k = 0; // variable used to store the mask index of the exact byte in the mask array to mask with
-                    
-                    for(int j = 0; j<payload_data_len; j++){
-                        
-                        k = j % 4;
-                        
-                        send_data[i] = payload_data[j] ^ mask[k];
-                        
-                        i++;
-                        
-                    }
-                    
-                    // block SIGPIPE signal before attempting to send data, just incase the connection is closed
-                    block_sigpipe_signal();
-                    
-                    // send the data
-                    int64_t len = 0;
-
-                    // keep polling till we have sent the entire frame
-                    while(len < i){
-
-                        int64_t local_len = BIO_write(c_bio, send_data, i - len);
-
-                        if(local_len > 0){
-
-                            len += local_len;
-                                    
-                            send_data += local_len;
-
-                        }
-                        else{
-                            if(BIO_should_retry(c_bio)){
-                            
-                                continue;
-
-                            }
-                            else{
-
-                                // here bio_read couldn't fetch any extra data
-                                strncpy(error_buffer, "Websocket Connection Lost", error_buffer_array_length);
-
-                                error = true;
-                                
-                                // we unblock the sigpipe signal because fail_ws_connection internally blocks it
-                                unblock_sigpipe_signal();
-
-                                fail_ws_connection(GOING_AWAY);
-                                
-                                // the connection getting lost isn't in itself an error it just puts the lock client in a closed state
-
-                                return error;
-
-                            }
-                        }
-
-                    }
-
-                    // getting here the send request succeeds
-
-                    // we unblock the sigpipe signal
-                    unblock_sigpipe_signal();
-                
-                }
-                  
-            }
-            else{
-            // here the payload data is larger than the size of the send data array so we send the data out with multiple frames
-
-                send_data = (char*)send_data_static;
-                
-                // set the first byte stating that this is a multiframe data payload
-                send_data[i] = FIN_BIT_NOT_SET | RSV_BIT_UNSET_ALL | TEXT_FRAME;
-                i++;
-
-                // we store the frame length of the frame - we set the frame length of the individual frames to send_data_array_len - biggest_header_len so the frame can be fit into the static array irrespective of the websocket header length
-                uint64_t frame_data_len = send_data_array_len - biggest_header_len;
-
-                // this variable holds the index of the payload data that the sending continues from after each frame
-                uint64_t continuation_index = 0;
-                
-                // set the second byte
-                if(frame_data_len < 126){ // if frame data length is less than 126 the next 7 bits represent the frame length
-                    
-                    send_data[i] = MASK_BIT_SET | (unsigned char)frame_data_len;
-                    i++;
-                    
-                }
-                else if( (frame_data_len > 125) && (frame_data_len < MAX_2BYTE_INT) ){ // next byte stores the value 126 and the next two bytes store the payload length
-                    
-                    send_data[i] = (unsigned char)(MASK_BIT_SET | (unsigned char)126);
-                    i++;
-                    
-                    send_data[i] = (0xFF00 & frame_data_len) >> 8;
-                    i++;
-                    
-                    send_data[i] = (0x00FF & frame_data_len);
-                    i++;
-                    
-                }
-                else if( (frame_data_len > (MAX_2BYTE_INT - 1)) && (frame_data_len < (MAX_8BYTE_INT - 1)) ){
-                // next byte stores the value 127 and he next 8 bytes store the payload length
-                    
-                    send_data[i] = (unsigned char)(MASK_BIT_SET | (unsigned char)127);
-                    i++;
-                    
-                    send_data[i] = (0xFF00000000000000 & frame_data_len) >> 56 ; // the most significant bit cannot be 1 since we have the MAX_8BYTE_INT range test before executing this part of the code
-                    i++;
-                    
-                    send_data[i] = (0x00FF000000000000 & frame_data_len) >> 48;
-                    i++;
-                    
-                    send_data[i] = (0x0000FF0000000000 & frame_data_len) >> 40;
-                    i++;
-                    
-                    send_data[i] = (0x000000FF00000000 & frame_data_len) >> 32;
-                    i++;
-                    
-                    send_data[i] = (0x00000000FF000000 & frame_data_len) >> 24;
-                    i++;
-                    
-                    send_data[i] = (0x0000000000FF0000 & frame_data_len) >> 16;
-                    i++;
-                    
-                    send_data[i] = (0x000000000000FF00 & frame_data_len) >> 8;
-                    i++;
-                    
-                    send_data[i] = (0x00000000000000FF & frame_data_len); // no shift required
-                    i++;
-                    
-                    
-                }
-                
-                for(int j = 0; j<mask_array_len; j++){
-                    
-                    send_data[i] = mask[j]; // store the mask in the send data array
-                    
-                    i++;
-                    
-                }
-                // mask storing end 
-                
-                // mask the data and store the masked data in the send data array 
-                int k = 0; // variable used to store the mask index of the exact byte in the mask array to mask with
-                
-                for(uint64_t j = 0; j<frame_data_len; j++){
-
-                    k = j % 4;
-                    
-                    send_data[i] = payload_data[j] ^ mask[k];
-                    
-                    i++;
-                    
-                }
-
-                // increment the continuation index by frame data len
-                continuation_index += frame_data_len;
 
                 // block SIGPIPE signal before attempting to send data, just incase the connection is closed
                 block_sigpipe_signal();
@@ -1171,353 +1212,58 @@ bool lock_http2_client_nb::send(std::string_view payload_data){ // sends data pa
                 int64_t len = 0;
 
                 // keep polling till we have sent the entire frame
-                while(len < i){
+                while(len < pending_bytes){
 
-                    int64_t local_len = BIO_write(c_bio, send_data, i - len);
+                    int64_t local_len = BIO_write(c_bio, data_ptr, pending_bytes - len);
 
                     if(local_len > 0){
 
                         len += local_len;
                                 
-                        send_data += local_len;
+                        data_ptr += local_len;
 
                     }
                     else{
+
                         if(BIO_should_retry(c_bio)){
-                        
+
                             continue;
 
                         }
                         else{
 
-                            // here bio_read couldn't fetch any extra data
-                            strncpy(error_buffer, "Websocket Connection Lost", error_buffer_array_length);
+                            // here wolfssl_read couldn't send any extra data
+                            strcpy(error_buffer, "Write failure while transmitting outbound queue.");
 
                             error = true;
                             
-                            // we unblock the sigpipe signal because fail_ws_connection internally blocks it
                             unblock_sigpipe_signal();
 
-                            fail_ws_connection(GOING_AWAY);
-                            
-                            // the connection getting lost isn't in itself an error it just puts the lock client in a closed state
-
+                            // we return from this function
                             return error;
-
+                            
                         }
+
                     }
 
                 }
 
-                // getting here the send request for this frame succeeds
+                // getting here the send request succeeds
 
                 // we unblock the sigpipe signal
                 unblock_sigpipe_signal();
 
-                // we now build up the continuation frames
-
-                // we loop till the continuation index equals the payload data len
-                while(continuation_index < payload_data_len){
-
-                    // we test if the unsent portion of the data can be sent out as a single frame now
-                    if(payload_data_len - continuation_index <= send_data_array_len - biggest_header_len){
-                    // we send out this frame with the fin bit set
-
-                        // we set our iterator i back to 0
-                        i = 0;
-
-                        // we set our frame data len to payload_data_len - continution index as that would be the length of the remaining data to be sent
-                        frame_data_len = payload_data_len - continuation_index;
-                        
-                        // set the first byte
-                        send_data[i] = (unsigned char)(FIN_BIT_SET | RSV_BIT_UNSET_ALL | CONTINUATION_FRAME);
-                        i++;
-
-                        // set the second byte
-                        if(frame_data_len < 126){ // if payload data length is less than 126 the next 7 bits represent the payload length
-                            
-                            send_data[i] = MASK_BIT_SET | (unsigned char)frame_data_len;
-                            i++;
-                            
-                        }
-                        else if( (frame_data_len > 125) && (frame_data_len < MAX_2BYTE_INT) ){ // next byte stores the value 126 and the next two bytes store the payload length
-                            
-                            send_data[i] = (unsigned char)(MASK_BIT_SET | (unsigned char)126);
-                            i++;
-                            
-                            send_data[i] = (0xFF00 & frame_data_len) >> 8;
-                            i++;
-                            
-                            send_data[i] = (0x00FF & frame_data_len);
-                            i++;
-                            
-                        }
-                        else if( (frame_data_len > (MAX_2BYTE_INT - 1)) && (frame_data_len < (MAX_8BYTE_INT - 1)) ){
-                        // next byte stores the value 127 and he next 8 bytes store the payload length
-                            
-                            send_data[i] = (unsigned char)(MASK_BIT_SET | (unsigned char)127);
-                            i++;
-                            
-                            send_data[i] = (0xFF00000000000000 & frame_data_len) >> 56 ; // the most significant bit cannot be 1 since we have the MAX_8BYTE_INT range test before executing this part of the code
-                            i++;
-                            
-                            send_data[i] = (0x00FF000000000000 & frame_data_len) >> 48;
-                            i++;
-                            
-                            send_data[i] = (0x0000FF0000000000 & frame_data_len) >> 40;
-                            i++;
-                            
-                            send_data[i] = (0x000000FF00000000 & frame_data_len) >> 32;
-                            i++;
-                            
-                            send_data[i] = (0x00000000FF000000 & frame_data_len) >> 24;
-                            i++;
-                            
-                            send_data[i] = (0x0000000000FF0000 & frame_data_len) >> 16;
-                            i++;
-                            
-                            send_data[i] = (0x000000000000FF00 & frame_data_len) >> 8;
-                            i++;
-                            
-                            send_data[i] = (0x00000000000000FF & frame_data_len); // no shift required
-                            i++;
-                            
-                            
-                        }
-            
-                        // we reuse the already generated mask to save computation
-                        for(int j = 0; j<mask_array_len; j++){
-                            
-                            send_data[i] = mask[j]; // store the mask in the send data array
-                            
-                            i++;
-                            
-                        }
-
-                        // mask the data and store the masked data in the send data array 
-                        k = 0; // we reuse the variable used to store the mask index of the exact byte in the mask array to mask with
-                        
-                        // since this is the last frame we use continuation_index < payload_data_len as the conditional for this for loop
-                        for(uint64_t j = continuation_index; j<payload_data_len; j++){
-
-                            send_data[i] = payload_data[j] ^ mask[k];
-
-                            k = ++k % 4;
-                            
-                            i++;
-                            
-                        }
-
-                        // block SIGPIPE signal before attempting to send data, just incase the connection is closed
-                        block_sigpipe_signal();
-                        
-                        int64_t len = 0;
-
-                        // keep polling till we have sent the entire frame
-                        while(len < i){
-
-                            int64_t local_len = BIO_write(c_bio, send_data, i - len);
-
-                            if(local_len > 0){
-
-                                len += local_len;
-                                        
-                                send_data += local_len;
-
-                            }
-                            else{
-                                if(BIO_should_retry(c_bio)){
-                                
-                                    continue;
-
-                                }
-                                else{
-
-                                    // here bio_read couldn't fetch any extra data
-                                    strncpy(error_buffer, "Websocket Connection Lost", error_buffer_array_length);
-
-                                    error = true;
-                                    
-                                    // we unblock the sigpipe signal because fail_ws_connection internally blocks it
-                                    unblock_sigpipe_signal();
-
-                                    fail_ws_connection(GOING_AWAY);
-                                    
-                                    // the connection getting lost isn't in itself an error it just puts the lock client in a closed state
-
-                                    return error;
-
-                                }
-                            }
-
-                        }
-
-                        // getting here the pong request send succeeds
-
-                        // we unblock the sigpipe signal
-                        unblock_sigpipe_signal();
-
-                    }
-                    else{
-                    // we send out this frame with the fin bit not set - we do not alter the frame data len in this case as it would still be set to send_data_array_len - biggest_header_len
-
-                        // we set our iterator i back to 0
-                        i = 0;
-                        
-                        // we get our copy boundary index where our frame data for this frame stops
-                        uint64_t copy_bound = continuation_index + frame_data_len;
-
-                        // set the first byte
-                        send_data[i] = FIN_BIT_NOT_SET | RSV_BIT_UNSET_ALL | CONTINUATION_FRAME;
-                        i++;
-
-                        // set the second byte
-                        if(frame_data_len < 126){ // if payload data length is less than 126 the next 7 bits represent the payload length
-                            
-                            send_data[i] = MASK_BIT_SET | (unsigned char)frame_data_len;
-                            i++;
-                            
-                        }
-                        else if( (frame_data_len > 125) && (frame_data_len < MAX_2BYTE_INT) ){ // next byte stores the value 126 and the next two bytes store the payload length
-                            
-                            send_data[i] = (unsigned char)(MASK_BIT_SET | (unsigned char)126);
-                            i++;
-                            
-                            send_data[i] = (0xFF00 & frame_data_len) >> 8;
-                            i++;
-                            
-                            send_data[i] = (0x00FF & frame_data_len);
-                            i++;
-                            
-                        }
-                        else if( (frame_data_len > (MAX_2BYTE_INT - 1)) && (frame_data_len < (MAX_8BYTE_INT - 1)) ){
-                        // next byte stores the value 127 and he next 8 bytes store the payload length
-                            
-                            send_data[i] = (unsigned char)(MASK_BIT_SET | (unsigned char)127);
-                            i++;
-                            
-                            send_data[i] = (0xFF00000000000000 & frame_data_len) >> 56 ; // the most significant bit cannot be 1 since we have the MAX_8BYTE_INT range test before executing this part of the code
-                            i++;
-                            
-                            send_data[i] = (0x00FF000000000000 & frame_data_len) >> 48;
-                            i++;
-                            
-                            send_data[i] = (0x0000FF0000000000 & frame_data_len) >> 40;
-                            i++;
-                            
-                            send_data[i] = (0x000000FF00000000 & frame_data_len) >> 32;
-                            i++;
-                            
-                            send_data[i] = (0x00000000FF000000 & frame_data_len) >> 24;
-                            i++;
-                            
-                            send_data[i] = (0x0000000000FF0000 & frame_data_len) >> 16;
-                            i++;
-                            
-                            send_data[i] = (0x000000000000FF00 & frame_data_len) >> 8;
-                            i++;
-                            
-                            send_data[i] = (0x00000000000000FF & frame_data_len); // no shift required
-                            i++;
-                            
-                            
-                        }
-            
-                        // we reuse the already generated mask to save computation
-                        for(int j = 0; j<mask_array_len; j++){
-                            
-                            send_data[i] = mask[j]; // store the mask in the send data array
-                            
-                            i++;
-                            
-                        }
-
-                        // mask the data and store the masked data in the send data array 
-                        k = 0; // we reuse the variable used to store the mask index of the exact byte in the mask array to mask with
-                        
-                        for(uint64_t j = continuation_index; j<copy_bound; j++){
-
-                            send_data[i] = payload_data[j] ^ mask[k];
-
-                            k = ++k % 4;
-                            
-                            i++;
-                            
-                        }
-
-                        // block SIGPIPE signal before attempting to send data, just incase the connection is closed
-                        block_sigpipe_signal();
-                        
-                        int64_t len = 0;
-
-                        // keep polling till we have sent the entire frame
-                        while(len < i){
-
-                            int64_t local_len = BIO_write(c_bio, send_data, i - len);
-
-                            if(local_len > 0){
-
-                                len += local_len;
-                                        
-                                send_data += local_len;
-
-                            }
-                            else{
-                                if(BIO_should_retry(c_bio)){
-                                
-                                    continue;
-
-                                }
-                                else{
-
-                                    // here bio_read couldn't fetch any extra data
-                                    strncpy(error_buffer, "Websocket Connection Lost", error_buffer_array_length);
-
-                                    error = true;
-                                    
-                                    // we unblock the sigpipe signal because fail_ws_connection internally blocks it
-                                    unblock_sigpipe_signal();
-
-                                    fail_ws_connection(GOING_AWAY);
-                                    
-                                    // the connection getting lost isn't in itself an error it just puts the lock client in a closed state
-
-                                    return error;
-
-                                }
-                            }
-
-                        }
-
-                        // getting here the send request succeeds
-
-                        // we unblock the sigpipe signal
-                        unblock_sigpipe_signal();
-
-                    }
-
-                    // increment the continuation index by frame data len
-                    continuation_index += frame_data_len;
-
-                }
-
-            }   
+            }
 
         }
-        else{ // lock client in closed state
-            
-            strncpy(error_buffer, "Lock Client not connected", error_buffer_array_length);
-            
-            error = true;
-            
-        }
-    
+
+
     }
         
     return error;
     
 }
-    
+
 inline int lock_http2_client_nb::default_receive(char* data_array, int length_of_array_data, int length_of_array){
     
     std::cout<<data_array<<std::endl;
