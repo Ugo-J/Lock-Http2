@@ -12,29 +12,97 @@
 // constructor with url string
 lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
 
-    // initialisation of class wide variables
+    // we initialise our ssl ctx
     ssl_ctx = SSL_CTX_new(TLS_client_method());
-    
-    // check if url is a wss:// endpoint, check case insensitively
-    
-    if( (url.compare(0, 6, "wss://") == 0) || (url.compare(0, 6, "Wss://") == 0) || (url.compare(0, 6, "WSs://") == 0) || (url.compare(0, 6, "WSS://") == 0) || (url.compare(0, 6, "WsS://") == 0) || (url.compare(0, 6, "wSS://") == 0) || (url.compare(0, 6, "wsS://") == 0) || (url.compare(0, 6, "wSs://") == 0) ){ // endpoint is a wss:// endpoint, the second parameter to the std::string_view compare function is 6 which is the length of the string "wss://" which we are testing for the presence of, we list out and compare the 8 possible combinations of uppercase and lowercase lettering that are valid
-    
-        int protocol_prefix_len = strlen("wss://");
 
-        // we fetch the url length without the wss:// prefix and any path appended to the url, we do this by finding the next '/' character after the initial wss://
-        size_t base_url_end_index = url.find('/', protocol_prefix_len);
+    // NGHTTP2 INITIALISATION
 
-        int base_url_length = (base_url_end_index != std::string_view::npos) ? (int)base_url_end_index - protocol_prefix_len : url.size() - protocol_prefix_len; // saves the length of the url without the wss:// prefix and the path if any
+    // we set our nghttp2 callbacks
+
+    nghttp2_session_callbacks *callbacks = nullptr;
+
+    // we initialise our local callback function
+    int rv = nghttp2_session_callbacks_new(&callbacks);
+
+    if(rv != 0){
+
+        strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+        error = true;
+
+    }
+
+    // continue if no error
+    if(!error){
+
+        // Register our callbacks
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+        // now we initialise our session client
+        rv = nghttp2_session_client_new(&session, callbacks, this);
+
+        // our callbacks are copied internally into our session object so we delete the callback pointer here
+        nghttp2_session_callbacks_del(callbacks);
+
+        if(rv != 0){
+            
+            strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+            // we concatenate the nghttp2 specific error
+            strcat(error_buffer, nghttp2_strerror(rv));
         
-        // size of required memory in bytes to store the base url and the port number if it would be appended
-        int req_mem = base_url_length + 5; // we add an extra 5 bytes to the base url length to accomodate for the chance that this url was supplied without a port number so we have enough room to append port :443 to the base url
+            error = true;
+
+        }
+
+        // continue if no error
+        if(!error){
+
+            // we declare our nghttp2 settings struct and set our max concurrent streams in it
+            nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+            // we submit our settings
+            rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                // we concatenate the nghttp2 specific error
+                strcat(error_buffer, nghttp2_strerror(rv));
+            
+                error = true;
+
+            }
+            
+            // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+        }
+
+    }
+
+    // NGHTTP2 INITIALISATION END
+    
+    // check if url is a https:// endpoint, check case insensitively - for the wolfssl client we only implement the https client
+        
+    if(url.compare(0, 8, "https://") == 0){
+    
+        int protocol_prefix_len = strlen("https://");
+
+        int base_url_length = url.size() - protocol_prefix_len; // saves the length of the url without the https:// prefix
+        
+        // size of required memory in bytes to store the base url and the port number
+        int req_mem = base_url_length + 5; // we add an extra 5 bytes to the base url length to accomodate for the port number we would append before passing ths url to bio new connect
 
         // SSL members initialisations
         c_bio = BIO_new_ssl_connect(ssl_ctx); // creates a new bio ssl object
         BIO_get_ssl(c_bio, &c_ssl); // get the SSL structure component of the ssl bio for per instance SSL settings
         if(c_ssl == NULL){
             
-            strncpy(error_buffer, "Error fetching SSL structure pointer ", error_buffer_array_length);
+            strcpy(error_buffer, "Error fetching SSL structure pointer ");
                     
             error = true;
             
@@ -99,7 +167,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
                     
                     if(c_url_new == NULL){
                         
-                        strncpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ", error_buffer_array_length);
+                        strcpy(error_buffer, "Error allocating heap memory for lock_http2_client url parameter ");
                         
                         error = true;
                         
@@ -122,16 +190,17 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
             
             if(!error){ // checks if there was any error allocating memory, that is if that part of the code was executed. The constructor only continues if there was no error 
                 
-                // we check if the supplied url has the port number appended if not we append it
-                if(strchr(c_url, ':') == NULL){
-                    strcat(c_url, ":443"); // we use strcat here because the array length check already checks that we have enough space in the array to accomodate for the port number
-                }
+                // we append our port number - we use strcat here because the array length check already checks that we have enough space in the array to accomodate for the port number
+                strcat(c_url, ":443");
 
                 // set the websocket url(port included)
                 BIO_set_conn_hostname(c_bio, c_url);
                 
                 // set SSL mode to retry automatically should SSL connection fail
                 SSL_set_mode(c_ssl, SSL_MODE_AUTO_RETRY);
+
+                // we set our alpn protos on our ssl object to indicate that this handle only negotiates http2 protocol
+                SSL_set_alpn_protos(c_ssl, (const unsigned char *)"\x02h2", 3);
         
             }
         
@@ -140,7 +209,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
     }
     else{ // not a valid http endpoint
         
-        strncpy(error_buffer, "Supplied URL parameter is not a valid HTTP endpoint", error_buffer_array_length);
+        strcpy(error_buffer, "Supplied URL parameter is not a valid HTTP endpoint");
                 
         error = true;
         
@@ -149,12 +218,9 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
     
     if(!error){ // only continue if no error
         
-        int search_start_index = 6; // we store the index where we would begin the host name search from, we start searching from after the wss:// protocol prefix
-
-        // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
-        size_t host_name_end_index = url.find_first_of(":/", search_start_index); // we start searching at the search_start_index - index 6 to bypass the wss:// protocol prefix length
-        
-        int host_name_len = (host_name_end_index == std::string_view::npos) ? url.size() - search_start_index : (int)host_name_end_index - search_start_index;
+        int search_start_index = 8; // we store the index where we would begin the host name search from, we start searching from after the https:// protocol prefix
+            
+        int host_name_len = url.size() - search_start_index;
 
         if( host_name_len < host_static_array_length ){ // static array is large enough
         
@@ -183,7 +249,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
         
                 if(c_host_new == NULL){
             
-                    strncpy(error_buffer, "Error allocating heap memory for server host name ", error_buffer_array_length);
+                    strcpy(error_buffer, "Error allocating heap memory for server host name ");
                 
                     error = true;    
             
@@ -210,7 +276,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
         
                 if(c_host_new == NULL){
             
-                    strncpy(error_buffer, "Error allocating heap memory for server host name ", error_buffer_array_length);
+                    strcpy(error_buffer, "Error allocating heap memory for server host name ");
                 
                     error = true;    
             
@@ -234,136 +300,81 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
         
         if(!error){ // only continue if no error
         
-            // we set the host name we wish to connect to for server name identification(SNI) if the websocket address passed is a wss:// address. We test this by checking that the c_ssl pointer is non-null
-            if(!(c_ssl == NULL)){
+            // we set the host name we wish to connect to for server name identification(SNI).
+            if(!SSL_set_tlsext_host_name(c_ssl, c_host)){
+            // we test the return value. SSL_set_tlsext_host_name returns 0 on error and 1 on success
                 
-                if(!SSL_set_tlsext_host_name(c_ssl, c_host)){
-                // we test the return value. SSL_set_tlsext_host_name returns 0 on error and 1 on success
+                strcpy(error_buffer, "Error setting up Lock client for SNI TLS extension");
                     
-                    strncpy(error_buffer, "Error setting up Lock client for SNI TLS extension", error_buffer_array_length);
-                        
-                    error = true;
-                
-                } 
-                
+                error = true;
+            
             }
             
-            if(!error){
-            // only continue if no error
-            
-                // we store the start index of the path from the supplied url - we search for the next forward slash after the last colon, that is the start of the path in the supplied url string view
-                size_t path_start_index = url.find('/', search_start_index);
-                
-                // we check if a forward slash was found after the last colon, if none was we connect to the default root path else the forward slash till the end of the url string is the path
-                std::string_view path = (path_start_index != std::string_view::npos) ? url.substr(path_start_index) : "/";
+            if(!error){ // only continue if no error
 
-                // copy the channel path parameter into the channel path array
-                int path_string_len = path.size();
-                
-                if(path_string_len < path_static_array_length){ // we can store the path in the static array if this condition is true
+                // Set the BIO to non-blocking
+                BIO_set_nbio(c_bio, 1);
+
+                // make the connection
+                while(BIO_do_connect(c_bio) <= 0){
                     
-                    path.copy(c_path_static, path_string_len); // copy the path into the static array
-                    c_path_static[path_string_len] = '\0'; // null-terminate the array
-                    
-                    c_path = c_path_static;
-                    
-                }
-                else if(path_string_len < size_of_allocated_path_memory){ // allocated memory is large enough
-                    
-                    path.copy(c_path_new, path_string_len); // copy the path into the allocated array
-                    c_path_new[path_string_len] = '\0'; // null-terminate the array
-                    
-                    c_path = c_path_new;
-                    
-                }
-                else{ // neither static or already allocated memory is large enough, we test the two possible cases 
-                    
-                    if(c_path_new == NULL){ //memory has not been allocated yet
-                    
-                        c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
-                    
-                        if(c_path_new == NULL){
-                        
-                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
-                            
-                            error = true;
-                            
-                        }
-                        else{ 
-                            
-                            size_of_allocated_path_memory = path_string_len + 1;
-                            
-                            path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                    
-                            c_path_new[path_string_len] = '\0'; // null-terminate the array
-                    
-                            c_path = c_path_new;
-                    
-                        }
-                        
+                    if(BIO_should_retry(c_bio)){
+                    // getting here the read request would block so we just return
+
+                        continue;
+
                     }
-                    else{ // memory has been allocated but is still not sufficient
+                    else{
                         
-                        delete [] c_path_new; // delete already allocated memory
-                        
-                        c_path_new = new(std::nothrow) char[path_string_len + 1]; // allocate memory for the path string with the std::nothrow parameter so C++ throws no exceptons even if memory allocation fails. We check for this below
+                        strcpy(error_buffer, "Error connecting to WebSocket host ");
                     
-                        if(c_path_new == NULL){
-                        
-                            strncpy(error_buffer, "Error allocating heap memory for lock_http2_client channel path ", error_buffer_array_length);
-                            
-                            error = true;
-                            
-                        }
-                        else{ 
-                            
-                            size_of_allocated_path_memory = path_string_len + 1;
-                            
-                            path.copy(c_path_new, path_string_len); // copy the path into the dynamically allocated array
-                    
-                            c_path_new[path_string_len] = '\0'; // null-terminate the array
-                    
-                            c_path = c_path_new;
-                    
-                        }
-                        
+                        error = true;
+
+                        break;
+
                     }
-                    
+
                 }
                 
                 if(!error){ // only continue if no error
 
-                    // Set the BIO to non-blocking
-                    BIO_set_nbio(c_bio, 1);
+                    // we check the protocol that was negotiated, if it is not http2 we disconnect our BIO handle and set our error flag
+                    unsigned int protocol_len = 0;
+                    const unsigned char* protocol = nullptr;
 
-                    // make the connection
-                    while(BIO_do_connect(c_bio) <= 0){
-                        
-                        if(BIO_should_retry(c_bio)){
-                        // getting here the read request would block so we just return
+                    SSL_get0_alpn_selected(c_ssl, &protocol, &protocol_len);
 
-                            continue;
+                    if(protocol_len != 2 || memcmp(protocol, "h2", 2) != 0){
 
-                        }
-                        else{
-                            
-                            strncpy(error_buffer, "Error connecting to WebSocket host ", error_buffer_array_length);
-                        
-                            error = true;
+                        strcpy(error_buffer, "h2 protocol was not negotiated");
 
-                            break;
+                        error = true;
 
-                        }
-
+                        // we reset our bio
+                        BIO_reset(c_bio);
                     }
-                    
-                    // upgrade the connection to websocket
-                    if(!error){ // only continue if no error
-                    
+
+                    // only continue if no error
+                    if(!error){
+
+                        // we set our http headers
+
+                        // we set our method pseudo header with nullptr value so we can get the index to update it with
+                        method_index = set_header(":method", nullptr);
+
+                        // we set our path pseudo header with nullptr value so we can get the index to update it with
+                        path_index = set_header(":path", nullptr);
+
+                        // we set our scheme pseudo header - this doesn't change after connecting to the server
+                        set_header(":scheme", const_cast<char*>("https"));
+
+                        // we set our authority pseudo header - this also doesn't change after connecting to the server
+                        set_header(":authority", c_host);
+
                     }
                 
                 }
-    
+            
             }
     
         }
@@ -733,7 +744,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
 lock_http2_client_nb::lock_http2_client_nb(){
     
     // initialise ssl ctx
-    SSL_CTX_new(TLS_client_method());
+    ssl_ctx = SSL_CTX_new(TLS_client_method());
 
     // we set the application layer protocol for our ssl ctx to http2
     SSL_CTX_set_alpn_protos(ssl_ctx, (const unsigned char *)"\x02h2", 3);

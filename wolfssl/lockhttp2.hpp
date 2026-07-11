@@ -236,9 +236,6 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
         if(!error){ // only continue if no error
             
             int search_start_index = 8; // we store the index where we would begin the host name search from, we start searching from after the https:// protocol prefix
-
-            /* // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
-            size_t host_name_end_index = url.find_first_of(":/", search_start_index); // we start searching at the search_start_index - index 8 to bypass the https:// protocol prefix length */
             
             int host_name_len = url.size() - search_start_index;
 
@@ -1666,9 +1663,6 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
     if(!error){ // only continue if no error
         
         int search_start_index = 8; // we store the index where we would begin the host name search from, we start searching from after the https:// protocol prefix
-
-        /* // we search for the colon to indicate the start of the port number if any or the forward slash to indicate the start of the path if appended whichever comes first as that would indicate the end of the host name
-        size_t host_name_end_index = url.find_first_of(":/", search_start_index); // we start searching at the search_start_index - index 8 to bypass the https:// protocol prefix length */
         
         int host_name_len = url.size() - search_start_index;
 
