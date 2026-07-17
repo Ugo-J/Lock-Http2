@@ -171,7 +171,7 @@ protected:
     static constexpr int MAX_NUM_OF_HEADERS = 64;
 
     // this variable holds the maximum length of a header item - name or value - that we can handle
-    static constexpr int MAX_HEADER_ITEM_LENGTH = 128;
+    static constexpr int MAX_HEADER_ITEM_LENGTH = 256;
 
     // this array holds all our header names
     char h_name[MAX_NUM_OF_HEADERS][MAX_HEADER_ITEM_LENGTH];
