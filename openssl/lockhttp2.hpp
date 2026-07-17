@@ -784,6 +784,20 @@ lock_http2_client_nb::lock_http2_client_nb(){
     // continue if no error
     if(!error){
 
+        // we set our http2 protocol headers so any user defined header can come after these protocol headers as required by the protocol
+
+        // we set our method pseudo header with nullptr value, when connect is called this header's index is stored
+        set_header(":method", nullptr);
+
+        // we set our path pseudo header with, when connect is called this header's index is stored
+        set_header(":path", nullptr);
+
+        // we set our scheme pseudo header with nullptr, this value is updated after a connection is established
+        set_header(":scheme", nullptr);
+
+        // we set our authority pseudo header with nullptr, this value is updated when a connection is established
+        set_header(":authority", nullptr);
+
         // Register our callbacks
         nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
         nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
