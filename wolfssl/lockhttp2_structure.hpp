@@ -171,7 +171,7 @@ private:
     static constexpr const char* methods[] = {"GET", "POST", "PUT", "PATCH", "DELETE"};
 
 // variables for managing http headers
-private:
+protected:
 
     // this variable holds the maximum number of headers we can handle in a http request
     static constexpr int MAX_NUM_OF_HEADERS = 64;
