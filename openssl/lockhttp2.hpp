@@ -696,12 +696,23 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
                         // initialize SSL connection
                         SSL_set_connect_state(c_ssl);  // Set as client
 
-                        // perform tls handshake
-                        if(BIO_do_handshake(c_bio) <= 0){
+                        // Perform handshake
+                        while(BIO_do_handshake(c_bio) <= 0){
 
-                            BIO_free_all(c_bio); // this function throws segmentation fault when called without any network connection but to get here the connection has been established
-                            strcpy(error_buffer, "TLS handshake failed");          
-                            error = true;
+                            if(BIO_should_retry(c_bio)){
+                            // getting here the read request would block so we just return
+
+                                continue;
+
+                            }
+                            else{
+                                
+                                BIO_free_all(c_bio); // this throws segmentation fault when called without any network connection
+                                strcpy(error_buffer, "TLS handshake failed");          
+                                error = true;
+
+                            }
+
                         }
 
                         if(!error){
@@ -2040,12 +2051,23 @@ bool lock_http2_client_nb::interface_connect(std::string_view url, in_addr* inte
                         // initialize SSL connection
                         SSL_set_connect_state(c_ssl);  // Set as client
 
-                        // perform tls handshake
-                        if(BIO_do_handshake(c_bio) <= 0){
+                        // Perform handshake
+                        while(BIO_do_handshake(c_bio) <= 0){
 
-                            BIO_free_all(c_bio); // this function throws segmentation fault when called without any network connection but to get here the connection has been established
-                            strcpy(error_buffer, "TLS handshake failed");          
-                            error = true;
+                            if(BIO_should_retry(c_bio)){
+                            // getting here the read request would block so we just return
+
+                                continue;
+
+                            }
+                            else{
+                                
+                                BIO_free_all(c_bio); // this throws segmentation fault when called without any network connection
+                                strcpy(error_buffer, "TLS handshake failed");          
+                                error = true;
+
+                            }
+
                         }
 
                         if(!error){
