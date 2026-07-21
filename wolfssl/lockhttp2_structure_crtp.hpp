@@ -124,7 +124,7 @@ private:
     // we declare our meta data array, our meta data array is declared large enough to hold the metadata for our max concurrent streams
     meta_data metadata[MAX_CONCURRENT_STREAMS];
 
-    static constexpr int STATIC_ARRAY_SIZE = 16 * 1024; // we set our static data array size to 16KB
+    static constexpr int STATIC_ARRAY_SIZE = 64 * 1024; // we set our static data array size to 64KB
     static constexpr int NUM_OF_STATIC_ARRAYS = 32; // we set our number of static arrays. any meta data with array index greater than num of static arrays - 1 was declared off the heap
     char static_array[NUM_OF_STATIC_ARRAYS][STATIC_ARRAY_SIZE];
 
