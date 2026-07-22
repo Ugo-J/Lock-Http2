@@ -151,6 +151,16 @@ private:
     inline static const int DATA_ARRAY_LENGTH = 32 * 1024;
     char data_array[DATA_ARRAY_LENGTH] = {'\0'}; // array for holding received data before passing to nghttp2
 
+// struct that our data provider points to during a data send
+private:
+
+    struct{
+
+        char* data;
+        int data_len;
+
+    } send_data_provider;
+
 // http methods
 public:
 

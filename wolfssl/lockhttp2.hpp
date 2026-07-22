@@ -1073,8 +1073,11 @@ int lock_http2_client_nb::on_stream_close_cb(nghttp2_session *session, int32_t s
 
 long lock_http2_client_nb::send_body_provider_cb(nghttp2_session *session, int32_t stream_id, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void *user_data){
 
-    const char* data_start = static_cast<const char*>(source->ptr);
-    int& remaining_bytes = source->fd; // we use fd to keep track of how much data we still have to send
+    // we fetch our send data provider state, because our send data provider is a nameless struct we use decltype to get its pointer type
+    decltype(send_data_provider)* d_provider = static_cast<decltype(send_data_provider)*>(source->ptr);
+
+    const char* data_start = static_cast<const char*>(d_provider->data);
+    int& remaining_bytes = d_provider->data_len; // we keep track of how much data we still have to send
 
     if(remaining_bytes == 0){
 
@@ -1088,9 +1091,9 @@ long lock_http2_client_nb::send_body_provider_cb(nghttp2_session *session, int32
     std::memcpy(buf, data_start, to_copy);
     
     // we increment our source ptr so we start copying from the next unsent byte when next this callback is called
-    source->ptr = const_cast<char*>(data_start + to_copy);
+    d_provider->data = const_cast<char*>(data_start + to_copy);
 
-    // we decrement our remaining bytes which is a reference to source->fd
+    // we decrement our remaining bytes which is a reference to source->ptr->data_len
     remaining_bytes -= to_copy;
 
     if(remaining_bytes == 0){
@@ -1413,11 +1416,29 @@ bool lock_http2_client_nb::send(char* path, char* payload_data, int method, int 
 
         // our scheme and authority pseudo headers remain constant so we don't update it
 
-        // we setup ad initialise our data provider
+        // we setup and initialise our data provider
         nghttp2_data_provider2 provider;
-        provider.source.ptr = const_cast<char*>(payload_data);
-        provider.source.fd = (payload_data != nullptr) ? strlen(payload_data) : 0; // we store our payload data size
-        provider.read_callback = send_body_provider_cb;
+
+        // we set up our provider nghttp2 data provider if our payload data is non null
+        if(payload_data != nullptr){
+
+            // nghttp2_data_provider2.source is a union not a struct containing a ptr and an fd element, so we only use the ptr and point it to our send data provider struct
+
+            // we initialise our send data provider with our data
+            send_data_provider.data = payload_data;
+
+            // we set our payload data len
+            send_data_provider.data_len = strlen(payload_data);
+
+            // we set our nghttp2 data provider 2 source pointer to our send provider struct
+            provider.source.ptr = static_cast<void*>(&send_data_provider);
+
+            // provider.source.fd = (payload_data != nullptr) ? strlen(payload_data) : 0; - we don't update our provider.source.fd since we use the provider.source.ptr
+
+            // we set our provider read callback
+            provider.read_callback = send_body_provider_cb;
+
+        }
 
         // we fetch our next free data array we would use to store this stream's response
         int slot = acquire();
