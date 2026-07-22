@@ -1150,6 +1150,11 @@ int lock_http2_client_nb_crtp<T>::handle_frame_recv(const nghttp2_frame *frame){
             std::cout<<"PING frame received from server.\n";
             break;
 
+        case NGHTTP2_GOAWAY:
+
+            std::cout<<"GOAWAY received - error code: "<<frame->goaway.error_code<<", last_stream_id: "<< frame->goaway.last_stream_id<<"\n";
+            break;
+
     } */
 
     return 0;

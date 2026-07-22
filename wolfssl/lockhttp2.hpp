@@ -1116,7 +1116,7 @@ int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_f
 
 }
 
-int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
+int lock_http2_client_nb_crtp<T>::handle_frame_recv(const nghttp2_frame *frame){
 
     // we use this switch case to handle different header types
     /* switch(frame->hd.type){
@@ -1138,6 +1138,11 @@ int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
         case NGHTTP2_PING:
 
             std::cout<<"PING frame received from server.\n";
+            break;
+
+        case NGHTTP2_GOAWAY:
+
+            std::cout<<"GOAWAY received - error code: "<<frame->goaway.error_code<<", last_stream_id: "<< frame->goaway.last_stream_id<<"\n";
             break;
 
     } */
