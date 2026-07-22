@@ -979,9 +979,6 @@ int lock_http2_client_nb_crtp<T>::on_header_cb(nghttp2_session *session, const n
 template <typename T>
 int lock_http2_client_nb_crtp<T>::handle_frame_recv(const nghttp2_frame *frame){
 
-template <typename T>
-int lock_http2_client_nb_crtp<T>::handle_frame_recv(const nghttp2_frame *frame){
-
     // we use this switch case to handle different header types
     /* switch(frame->hd.type){
 
@@ -1010,9 +1007,6 @@ int lock_http2_client_nb_crtp<T>::handle_frame_recv(const nghttp2_frame *frame){
             break;
 
     } */
-
-    return 0;
-}
 
     return 0;
 }
