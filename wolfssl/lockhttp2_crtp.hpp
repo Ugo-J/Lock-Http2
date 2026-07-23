@@ -1261,6 +1261,16 @@ int lock_http2_client_nb_crtp<T>::handle_stream_close(int32_t stream_id, uint32_
     else{
 
         std::cout<<"[Stream "<<stream_id<<"] Closed with error code: "<<error_code<<"\n";
+
+        // we fetch our stream metadata for this stream
+        meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, stream_id));
+
+        // we call the recv error of this class with the user supplied id for this stream
+        recv_error(stream_metadata->user_id);
+
+        // now we release the data array we used for this stream, the data array slot is stored in the array index variable of the stream metadata
+        release(stream_metadata->array_index);
+
     }
     
     return 0;
@@ -1585,6 +1595,14 @@ int lock_http2_client_nb_crtp<T>::recv_data(char* data, int data_length, int len
 
     // this function simply calls the recv data function of the derived class
     return static_cast<T*>(this)->recv_data(data, data_length, length_of_data_array, user_id);
+
+}
+
+template <typename T>
+int lock_http2_client_nb_crtp<T>::recv_error(int user_id){
+
+    // this function simply calls the recv error function of the derived class
+    return static_cast<T*>(this)->recv_error(user_id);
 
 }
 

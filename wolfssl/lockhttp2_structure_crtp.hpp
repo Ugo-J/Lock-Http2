@@ -35,6 +35,9 @@ private:
     // receive header function
     int recv_header(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id);
 
+    // receive error function
+    recv_error(int user_id);
+
 
 // private class functions
 private:
