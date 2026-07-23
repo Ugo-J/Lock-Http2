@@ -1514,6 +1514,84 @@ bool lock_http2_client_nb_crtp<T>::basic_read(){
 
         }
 
+        // we check if there are any pending frames like control frames to be sent - if there is we send it out
+        if(nghttp2_session_want_write(session)){
+
+            // we serialise and send out the pending bytes in this loop
+            while(true){
+
+                // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
+                uint8_t* data_ptr = nullptr;
+
+                // we call session mem send2 to serialise our data
+                ssize_t pending_bytes = nghttp2_session_mem_send2(session, const_cast<const uint8_t**>(&data_ptr));
+                
+                if(pending_bytes < 0){
+
+                    strcpy(error_buffer, "nghttp2 engine serialization error: ");
+
+                    // we concatenate the nghttp2 specific error
+                    strcat(error_buffer, nghttp2_strerror(pending_bytes));
+                
+                    error = true;
+
+                    break;
+                        
+                }
+            
+                if(pending_bytes == 0){
+
+                    break; // no more frames left to build for this transmission block so we break out of our serialisation loop
+                    
+                }
+
+                // SIGPIPE signal is still blocked so we continue without blocking it
+                
+                int64_t len = 0;
+
+                // keep polling till we have sent the entire frame
+                while(len < pending_bytes){
+
+                    int64_t local_len = BIO_write(c_bio, data_ptr, pending_bytes - len);
+
+                    if(local_len > 0){
+
+                        len += local_len;
+                                
+                        data_ptr += local_len;
+
+                    }
+                    else{
+
+                        if(BIO_should_retry(c_bio)){
+
+                            continue;
+
+                        }
+                        else{
+
+                            // here wolfssl_read couldn't send any extra data
+                            strcpy(error_buffer, "Write failure while transmitting outbound queue.");
+
+                            error = true;
+                            
+                            unblock_sigpipe_signal();
+
+                            // we return from this function
+                            return error;
+                            
+                        }
+
+                    }
+
+                }
+
+                // getting here the send of pending bytes succeeds
+
+            }
+
+        }
+
         // we unblock the sigpipe signal
         unblock_sigpipe_signal();
 
