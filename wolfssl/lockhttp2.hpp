@@ -1116,7 +1116,7 @@ int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_f
 
 }
 
-int lock_http2_client_nb_crtp<T>::handle_frame_recv(const nghttp2_frame *frame){
+int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
 
     // we use this switch case to handle different header types
     /* switch(frame->hd.type){
@@ -1257,6 +1257,15 @@ int lock_http2_client_nb::handle_stream_close(int32_t stream_id, uint32_t error_
     else{
 
         std::cout<<"[Stream "<<stream_id<<"] Closed with error code: "<<error_code<<"\n";
+
+        // we fetch our stream metadata for this stream
+        meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, stream_id));
+
+        // we call the recv error of this class with the user supplied id for this stream
+        recv_error(stream_metadata->user_id);
+
+        // now we release the data array we used for this stream, the data array slot is stored in the array index variable of the stream metadata
+        release(stream_metadata->array_index);
     }
     
     return 0;
@@ -1576,9 +1585,21 @@ inline int lock_http2_client_nb::default_receive(char* data_array, int length_of
     
 }
 
+inline int lock_http2_client_nb::default_error_receive(int id){
+    
+    return 1;
+    
+}
+
 void lock_http2_client_nb::set_receive_function(lock_function fn){
     
     recv_data = std::move(fn);
+    
+}
+
+void lock_http2_client_nb::set_error_receive_function(lock_error_function fn){
+    
+    recv_error = std::move(fn);
     
 }
 
