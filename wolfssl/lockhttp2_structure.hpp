@@ -139,6 +139,15 @@ private:
     static constexpr int NUM_OF_STATIC_ARRAYS = 32; // we set our number of static arrays. any meta data with array index greater than num of static arrays - 1 was declared off the heap
     char static_array[NUM_OF_STATIC_ARRAYS][STATIC_ARRAY_SIZE];
 
+// functions for reserving slots
+public:
+
+    // this function sets the prioritise heap flag
+    void set_priori_heap(bool priori_heap){ prioritise_heap = priori_heap; }
+
+    // the reserve function is used to allocate a specified amount of memory in a specified number of heap slots ahead of time. This way the library wouldn't have to allocate memory after acquiring any of the reserved heap slots - the prioritise heap flag is used to indicate whether acquire calls should prioritise acquiring from the heap slots or from the static slots. This function returns the number of heap slots reserved
+    int reserve(int num_of_slots, int size, bool priori_heap = true);
+
 // acquire & release functions for acquiring the next free static array
 private:
 
@@ -150,12 +159,6 @@ private:
 
     // we use the heap mask to keep track of the free metadata locations for receiving stream data to our heap locations
     uint64_t heap_mask = 0xFFFFFFFFFFFFFFFF;
-
-    // this function sets the prioritise heap flag
-    void set_priori_heap(bool priori_heap){ prioritise_heap = priori_heap; }
-
-    // the reserve function is used to allocate a specified amount of memory in a specified number of heap slots ahead of time. This way the library wouldn't have to allocate memory after acquiring any of the reserved heap slots - the prioritise heap flag is used to indicate whether acquire calls should prioritise acquiring from the heap slots or from the static slots. This function returns the number of heap slots reserved
-    int reserve(int num_of_slots, int size, bool priori_heap = true);
 
     // this is the standard acquire function, it acquires from the static slots first and falls back to the heap if the static slot acquire fails
     int acquire();

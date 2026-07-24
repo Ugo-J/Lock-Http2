@@ -2542,7 +2542,7 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
     return sock; // Return the connected socket
 }
 
-int reserve(int num_of_slots, int size, bool priori_heap){
+int lock_http2_client_nb::reserve(int num_of_slots, int size, bool priori_heap){
 
     // this function reserves size memory in num_of_slots heap slots - it does not acquire the slots in question but just ensures that slots of size are available on the heap slots without having to allocate them on the go. so after calling reserve, immediately calling acquire heap() would very likely return one of these reserved slots
 
@@ -2787,7 +2787,7 @@ int lock_http2_client_nb::acquire_heap(){
 
     }
 
-    // getting here we cou;ldn't acquire a slot from the heap slots so we fall back to our static slots
+    // getting here we couldn't acquire a slot from the heap slots so we fall back to our static slots
 
     if(static_mask != 0){
 
