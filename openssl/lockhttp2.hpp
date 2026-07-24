@@ -1304,8 +1304,8 @@ bool lock_http2_client_nb::send(char* path, char* payload_data, int method, int 
 
         }
 
-        // we fetch our next free data array we would use to store this stream's response
-        int slot = acquire();
+        // we fetch our next free data array we would use to store this stream's response depending on whether or not we are prioritising heap
+        int slot = prioritise_heap ? acquire_heap() : acquire();
 
         // we check that we acquired a valid slot
         if(slot < 0){
@@ -2337,6 +2337,106 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
     return sock;
 }
 
+int lock_http2_client_nb::reserve(int num_of_slots, int size, bool priori_heap){
+
+    // this function reserves size memory in num_of_slots heap slots - it does not acquire the slots in question but just ensures that slots of size are available on the heap slots without having to allocate them on the go. so after calling reserve, immediately calling acquire heap() would very likely return one of these reserved slots
+
+    // we first check if our heap slots are full in which case we just return 0
+    if(heap_mask == 0) return 0;
+
+    // we check that our supplied heap size is not 0
+    if(size <= 0) return 0;
+
+    // we first store our priori heap bool in our prioritise heap bool variable
+    prioritise_heap = priori_heap;
+
+    // we keep track of how many slots we have reserved
+    int count = 0;
+
+    // we get a local copy of our heap mask
+    uint64_t free_slots = heap_mask;
+
+    // now we loop though our heap slots till we have allocated size in num of slots slot or we have exhausted our available slots
+    while(count < num_of_slots && free_slots != 0){
+
+        // we fetch our next free heap slot
+        int bit_index = __builtin_ctzll(free_slots);
+        int slot = bit_index + NUM_OF_STATIC_ARRAYS;
+
+        // we check if memory has already been allocated for this slot
+        if(metadata[slot].data_array == nullptr){
+
+            // getting here memory has not been allocated for this slot so we allocate its required memory, initialise its data members and return this slot
+
+            // we allocate memory for our data array pointer - we use the supplied parameter as the heap array size
+            metadata[slot].data_array = new(std::nothrow) char[size]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+
+            // we check that data was indeed allocated and break if the allocation fails
+            if(metadata[slot].data_array == nullptr) break;
+
+            // we set the cursor
+            metadata[slot].cursor = metadata[slot].data_array;
+
+            // we set the array size
+            metadata[slot].array_size = size;
+
+            // we set the array index both in the metadata array and the data array array because these are two parallel arrays
+            metadata[slot].array_index = slot;
+
+            // we increment our count variable
+            count++;
+
+        }
+        else{
+        
+            // getting here memory has already been allocated for this slot so we check if the allocated memory for this slot is >= our acquire heap parameter
+            if(metadata[slot].array_size >= size){
+
+                // getting here this array size ia >= our size parameter so add this to our count
+
+                // we reset the cursor
+                metadata[slot].cursor = metadata[slot].data_array;
+
+                count++;
+
+            }
+            else{
+
+                // getting here this memory slot is < our size so we delete it and reallocate memory of length size
+
+                // we free this memory
+                delete [] metadata[slot].data_array;
+
+                // we allocate new memory for our data array pointer
+                metadata[slot].data_array = new(std::nothrow) char[size]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+
+                // we check that data was indeed allocated and break if the allocation fails
+                if(metadata[slot].data_array == nullptr) break;
+
+                // we set the cursor
+                metadata[slot].cursor = metadata[slot].data_array;
+
+                // we set the array size
+                metadata[slot].array_size = size;
+
+                // we set the array index both in the metadata array and the data array array because these are two parallel arrays
+                metadata[slot].array_index = slot;
+
+                // we increment our count variable
+                count++;
+
+            }
+
+        }
+
+        free_slots &= ~(1ull << bit_index);
+
+    }
+
+    // we return the num of slots we initialised
+    return count;
+}
+
 int lock_http2_client_nb::acquire(){
 
     // the builtin ctz function is undefined when passed a parameter of 0 so we check that the static mask isn't 0
@@ -2414,7 +2514,7 @@ int lock_http2_client_nb::acquire(){
             // we set the array size
             metadata[slot].array_size = STATIC_ARRAY_SIZE;
 
-            // we set the array index both in the metadata array and the data array array becasue these are two parallel arrays
+            // we set the array index both in the metadata array and the data array array because these are two parallel arrays
             metadata[slot].array_index = slot;
 
         }
@@ -2422,6 +2522,100 @@ int lock_http2_client_nb::acquire(){
 
             // getting here memory has been allocated before for this location so we just reset its cursor other variables remain valid
             metadata[slot].cursor = metadata[slot].data_array;
+
+        }
+
+        return slot;
+
+    }
+
+    return -1;
+
+}
+
+int lock_http2_client_nb::acquire_heap(){
+
+    // the acquire heap function with no parameters prioritises acquiring slots from the heap memory first, it only falls back to static slot if a slot couldn't be acquired from the heap
+
+    if(heap_mask != 0){
+
+        // we fetch the lowest free bit in our bit mask
+        int slot = __builtin_ctzll(heap_mask);
+
+        // we mark the acquired slot as in use
+        heap_mask &= ~(1ull << slot);
+
+        // we add NUM_OF_STATIC_ARRAYS to our acquired slot because heap mask metadata entries start at index NUM_OF_STATIC_ARRAYS
+        slot += NUM_OF_STATIC_ARRAYS;
+
+        // we initialise our slot location
+
+        // we check if memory has been allocated in this metadata location before
+        if(metadata[slot].data_array == nullptr){
+
+            // getting here memory has not been allocated to this location before so we allocate it
+
+            // we allocate memory for our data array pointer - we size the allocated memory just like our static array arrays
+            metadata[slot].data_array = new(std::nothrow) char[STATIC_ARRAY_SIZE]; // the nothrow parameter prevents an exception from being thrown by the C++ runtime should the heap allocation fail
+
+            // we check that data was indeed allocated ad return if the allocation fails
+            if(metadata[slot].data_array == nullptr) return -1;
+
+            // we set the cursor
+            metadata[slot].cursor = metadata[slot].data_array;
+
+            // we set the array size
+            metadata[slot].array_size = STATIC_ARRAY_SIZE;
+
+            // we set the array index both in the metadata array and the data array array because these are two parallel arrays
+            metadata[slot].array_index = slot;
+
+        }
+        else{
+
+            // getting here memory has been allocated before for this location so we just reset its cursor other variables remain valid
+            metadata[slot].cursor = metadata[slot].data_array;
+
+        }
+
+        return slot;
+
+    }
+
+    // getting here we couldn't acquire a slot from the heap slots so we fall back to our static slots
+
+    if(static_mask != 0){
+
+        // we fetch the lowest free bit in our bit mask
+        int slot = __builtin_ctz(static_mask);
+
+        // we mark the acquired slot as in use
+        static_mask &= ~(1u << slot);
+
+        // we set up the metadata slot we just acquired
+
+        // we first check if this memort location has been initialised before
+        if(metadata[slot].data_array == nullptr){
+
+            // getting here this location hasn't been initialised before so we initialise it
+
+            // we set the data array pointer
+            metadata[slot].data_array = static_array[slot];
+
+            // we set the cursor
+            metadata[slot].cursor = static_array[slot];
+
+            // we set the array size
+            metadata[slot].array_size = STATIC_ARRAY_SIZE;
+
+            // we set the array index both in the metadata array and the data array array because these are two parallel arrays
+            metadata[slot].array_index = slot;
+
+        }
+        else{
+
+            // getting here this location has been initialised before so we just reset our cursor
+            metadata[slot].cursor = static_array[slot];
 
         }
 

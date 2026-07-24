@@ -135,8 +135,20 @@ private:
     static constexpr int NUM_OF_STATIC_ARRAYS = 32; // we set our number of static arrays. any meta data with array index greater than num of static arrays - 1 was declared off the heap
     char static_array[NUM_OF_STATIC_ARRAYS][STATIC_ARRAY_SIZE];
 
+// functions for reserving slots
+public:
+
+    // this function sets the prioritise heap flag
+    void set_priori_heap(bool priori_heap){ prioritise_heap = priori_heap; }
+
+    // the reserve function is used to allocate a specified amount of memory in a specified number of heap slots ahead of time. This way the library wouldn't have to allocate memory after acquiring any of the reserved heap slots - the prioritise heap flag is used to indicate whether acquire calls should prioritise acquiring from the heap slots or from the static slots. This function returns the number of heap slots reserved
+    int reserve(int num_of_slots, int size, bool priori_heap = true);
+
 // acquire & release functions for acquiring the next free static array
 private:
+
+    // this function indicates whether we are prioritising the heap slots or static slots when acquiring slots
+    bool prioritise_heap = false;
 
     // we use the static mask to keep track of the free arrays in our static arrays for receiving stream data
     uint32_t static_mask = 0xFFFFFFFF;
@@ -144,7 +156,11 @@ private:
     // we use the heap mask to keep track of the free metadata locations for receiving stream data to our heap locations
     uint64_t heap_mask = 0xFFFFFFFFFFFFFFFF;
 
+    // this is the standard acquire function, it acquires from the static slots first and falls back to the heap if the static slot acquire fails
     int acquire();
+
+    // this function is used to acquire a slot by checking for a heap slot first, it falls back to a static slot if it couldn't acquire a heap slot
+    int acquire_heap();
 
     // this function is used to acquire a particular heap location with a specified memory size
     int acquire_heap(int sz);
