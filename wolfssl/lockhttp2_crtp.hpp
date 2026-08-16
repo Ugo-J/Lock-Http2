@@ -933,6 +933,8 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(){
 
             strcpy(error_buffer, "Failed to load system CA bundle.");
 
+            std::cout<<error_buffer<<std::endl;
+
             error = true;
         }
 
