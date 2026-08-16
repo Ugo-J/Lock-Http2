@@ -915,6 +915,9 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(){
 
     if(!error){
 
+        // wolfssl debugging
+        wolfSSL_Debugging_ON();
+
         // we initialise our ssl ctx
         ssl_ctx = wolfSSL_CTX_new(wolfSSLv23_client_method());
 
