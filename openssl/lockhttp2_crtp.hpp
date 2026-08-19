@@ -1940,23 +1940,91 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
 template <typename T>
 bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_addr* interface_address, char* interface_name){
     
-    if(client_state == CLOSED){
-        
-        memset(error_buffer, '\0', strlen(error_buffer)); // erase previous error message
-        
-        error = false;
-        
+    // we close the https connection - if this handle was connected before, if it wasn't close is still a safe operation
+    close();
+
+    // erase any previous error message
+    memset(error_buffer, '\0', strlen(error_buffer));
+
+    // we set our error flag to false
+    error = false;
+
+    // NGHTTP2 INITIALISATION
+
+    // we set our nghttp2 callbacks
+
+    nghttp2_session_callbacks *callbacks = nullptr;
+
+    // we initialise our local callback function
+    int rv = nghttp2_session_callbacks_new(&callbacks);
+
+    if(rv != 0){
+
+        strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+        error = true;
+
+        return error;
+
     }
-    else{ // the lock client instance has a connection in open state
-        
-        memset(error_buffer, '\0', strlen(error_buffer)); // erase any previous error message
-        
-        error = false; // sets the error flag to false first so the close function can run 
-        
-        // we close the https connection
-        close();
+
+    // continue if no error
+    if(!error){
+
+        // Register our callbacks
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+        // now we initialise our session client
+        rv = nghttp2_session_client_new(&session, callbacks, this);
+
+        // our callbacks are copied internally into our session object so we delete the callback pointer here
+        nghttp2_session_callbacks_del(callbacks);
+
+        if(rv != 0){
             
+            strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+            // we concatenate the nghttp2 specific error
+            strcat(error_buffer, nghttp2_strerror(rv));
+        
+            error = true;
+
+            return error;
+
+        }
+
+        // continue if no error
+        if(!error){
+
+            // we declare our nghttp2 settings struct and set our max concurrent streams in it
+            nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+            // we submit our settings
+            rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                // we concatenate the nghttp2 specific error
+                strcat(error_buffer, nghttp2_strerror(rv));
+            
+                error = true;
+
+                return error;
+
+            }
+            
+            // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+        }
+
     }
+
+    // NGHTTP2 INITIALISATIONS END
 
     // check if url is a https:// endpoint, check case insensitively - we only implement the https client
         
@@ -2150,8 +2218,9 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
             if(error == false){
             // only continue if no error
 
-                // we create an SSL object for this lock client instance
-                SSL *c_ssl = SSL_new(ssl_ctx);
+                // we create an SSL object for this lock client instance if one hasn't been created before
+                if(c_ssl == nullptr) c_ssl = SSL_new(ssl_ctx);
+
                 if(c_ssl == NULL){
                     
                     strcpy(error_buffer, "Error creating SSL structure ");
@@ -2171,20 +2240,20 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
                     // we set our alpn protos on our ssl object to indicate that this handle only negotiates http2 protocol
                     SSL_set_alpn_protos(c_ssl, (const unsigned char *)"\x02h2", 3);
 
-                    // Create BIO for this socket
+                    // Create a local BIO for this socket
                     BIO* sock_bio = BIO_new_socket(sock, BIO_NOCLOSE);
                     if(!sock_bio){
                         
                         SSL_free(c_ssl);
                         ::close(sock);
-                        strcpy(error_buffer, "Error creating BIO structure from socket");          
+                        strcpy(error_buffer, "Error creating BIO structure from socket");      
                         error = true;
                     }
 
                     if(!error){
                     // continue if no error
 
-                        // now we create an SSL BIO
+                        // now we create a local SSL BIO
                         BIO* ssl_bio = BIO_new(BIO_f_ssl());
                         BIO_set_ssl(ssl_bio, c_ssl, BIO_CLOSE);
 
@@ -2193,7 +2262,7 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
 
                         // initialize SSL connection
                         SSL_set_connect_state(c_ssl);  // Set as client
-                        
+
                         // Perform handshake
                         while(BIO_do_handshake(c_bio) <= 0){
 
@@ -2285,30 +2354,40 @@ int lock_http2_client_nb_crtp<T>::connect_to_server(const char *hostname, const 
         return -1;
     }
 
-    // Bind to a specific device
-    if(setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interface_name, strlen(interface_name)) < 0){
-        std::cout<<"Error binding socket to device"<<std::endl;
-        perror("setsockopt(SO_BINDTODEVICE)");
-        strcpy(error_buffer, "Error binding socket to device");          
-        error = true;
-        ::close(sock);
-        return -1;
-    }
-    else{
-        std::cout<<"Successfully bound socket to device "<<interface_name<<std::endl;
+    // we bind to an interface if the supplied interface pointer is non null
+    if(interface_name != nullptr){
+
+        // Bind to a specific device
+        if(setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, interface_name, strlen(interface_name)) < 0){
+            std::cout<<"Error binding socket to device"<<std::endl;
+            perror("setsockopt(SO_BINDTODEVICE)");
+            strcpy(error_buffer, "Error binding socket to device");          
+            error = true;
+            ::close(sock);
+            return -1;
+        }
+        else{
+            std::cout<<"Successfully bound socket to device "<<interface_name<<std::endl;
+        }
+
     }
 
-    // Set up local address structure
-    struct sockaddr_in localaddr;
-    memset(&localaddr, 0, sizeof(localaddr));
-    localaddr.sin_family = AF_INET;
-    localaddr.sin_addr.s_addr = interface_address->s_addr;
-    localaddr.sin_port = 0;  // Lets the system choose port
+    // we bind to a specific interface address if the supplied interface address is non null
+    if(interface_address != nullptr){
 
-    // Bind socket to specific interface
-    if (bind(sock, (struct sockaddr*)&localaddr, sizeof(localaddr)) < 0) {
-        // if the binding fails the library does not set the error flag to true it just prints the error message, ignores the specified interface and attempts to make the connection with whatever network interface is available
-        std::cout<<"Lockws Error: Binding To Supplied Interface Address Failed...Connection Will Be Attempted With The Default Network Interface Address..."<<std::endl;
+        // Set up local address structure
+        struct sockaddr_in localaddr;
+        memset(&localaddr, 0, sizeof(localaddr));
+        localaddr.sin_family = AF_INET;
+        localaddr.sin_addr.s_addr = interface_address->s_addr;
+        localaddr.sin_port = 0;  // Lets the system choose port
+
+        // Bind socket to specific interface
+        if (bind(sock, (struct sockaddr*)&localaddr, sizeof(localaddr)) < 0) {
+            // if the binding fails the library does not set the error flag to true it just prints the error message, ignores the specified interface and attempts to make the connection with whatever network interface is available
+            std::cout<<"Lockws Error: Binding To Supplied Interface Address Failed...Connection Will Be Attempted With The Default Network Interface Address..."<<std::endl;
+        }
+
     }
 
     // Set up hints for getaddrinfo
