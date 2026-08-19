@@ -331,7 +331,7 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url){
             if(!error){ // only continue if no error
             
                 // we set the host name we wish to connect to for server name identification(SNI)
-                if(!(c_ssl == NULL)){
+                if(c_ssl != NULL){
                     
                     if(!wolfSSL_UseSNI(c_ssl, WOLFSSL_SNI_HOST_NAME, c_host, host_name_len)){
                     // we test the return value. wolfSSL_UseSNI returns 0 on error and 1 on success
@@ -778,7 +778,7 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
             if(!error){ // only continue if no error
             
                 // we set the host name we wish to connect to for server name identification(SNI)
-                if(!(c_ssl == NULL)){
+                if(c_ssl != NULL){
                     
                     if(!wolfSSL_UseSNI(c_ssl, WOLFSSL_SNI_HOST_NAME, c_host, host_name_len)){
                     // we test the return value. wolfSSL_UseSNI returns 0 on error and 1 on success
@@ -2030,7 +2030,7 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
         if(!error){ // only continue if no error
         
             // we set the host name we wish to connect to for server name identification(SNI) if the http address passed is a wss:// address. We test this by checking that the c_ssl pointer is non-null
-            if(!(c_ssl == NULL)){
+            if(c_ssl != NULL){
                 
                 if(!wolfSSL_UseSNI(c_ssl, WOLFSSL_SNI_HOST_NAME, c_host, host_name_len)){
                 // we test the return value. wolfSSL_UseSNI returns 0 on error and 1 on success
@@ -2125,8 +2125,7 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
 
                             // we set our http headers
 
-                            // we first clear all previous headers
-                            clear_all_headers();
+                            // our pseudo headers are already set in our constructor so these calls just update it while retaining any user set headers
 
                             // we set our method pseudo header with nullptr value so we can get the index to update it with
                             method_index = set_header(":method", nullptr);
@@ -2159,23 +2158,92 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
 template <typename T>
 bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_addr* interface_address, char* interface_name){
     
-    if(client_state == CLOSED){
-        
-        memset(error_buffer, '\0', strlen(error_buffer)); // erase previous error message
-        
-        error = false;
-        
+    // we close the https connection if this handle has been connected before
+    close();
+
+    // erase any previous error message
+    memset(error_buffer, '\0', strlen(error_buffer));
+    
+    // sets the error flag to false first so the close function can run
+    error = false;
+
+    // NGHTTP2 INITIALISATION
+
+    // we set our nghttp2 callbacks
+
+    nghttp2_session_callbacks *callbacks = nullptr;
+
+    // we initialise our local callback function
+    int rv = nghttp2_session_callbacks_new(&callbacks);
+
+    if(rv != 0){
+
+        strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+        error = true;
+
+        return error;
+
     }
-    else{ // the lock client instance has a http connection in open state
-        
-        memset(error_buffer, '\0', strlen(error_buffer)); // erase any previous error message
-        
-        error = false; // sets the error flag to false first so the close function can run 
-        
-        // we close our https connection
-        close();
+
+    // continue if no error
+    if(!error){
+
+        // Register our callbacks
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+        // now we initialise our session client
+        rv = nghttp2_session_client_new(&session, callbacks, this);
+
+        // our callbacks are copied internally into our session object so we delete the callback pointer here
+        nghttp2_session_callbacks_del(callbacks);
+
+        if(rv != 0){
             
+            strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+            // we concatenate the nghttp2 specific error
+            strcat(error_buffer, nghttp2_strerror(rv));
+        
+            error = true;
+
+            return error;
+
+        }
+
+        // continue if no error
+        if(!error){
+
+            // we declare our nghttp2 settings struct and set our max concurrent streams in it
+            nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+            // we submit our settings
+            rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                // we concatenate the nghttp2 specific error
+                strcat(error_buffer, nghttp2_strerror(rv));
+            
+                error = true;
+
+                return error;
+
+            }
+            
+            // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+        }
+
     }
+
+
+    // NGHTTP2 INITIALISATION END
 
     // check if url is a https:// endpoint, check case insensitively - for the wolfssl client we only implement the https client
         
@@ -2370,7 +2438,7 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
         if(!error){ // only continue if no error
         
             // we set the host name we wish to connect to for server name identification(SNI)
-            if(!(c_ssl == NULL)){
+            if(c_ssl != NULL){
                 
                 if(!wolfSSL_UseSNI(c_ssl, WOLFSSL_SNI_HOST_NAME, c_host, host_name_len)){
                 // we test the return value. wolfSSL_UseSNI returns 0 on error and 1 on success
@@ -2465,8 +2533,7 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
 
                             // we set our http headers
 
-                            // we first clear all previous headers
-                            clear_all_headers();
+                            // our pseudo headers are already set in our constructor so these calls just update it while retaining any user set headers
 
                             // we set our method pseudo header with nullptr value so we can get the index to update it with
                             method_index = set_header(":method", nullptr);
@@ -3232,10 +3299,6 @@ int lock_http2_client_nb_crtp<T>::reset(){
 
     // if a valid socket is bound, we first close it effectively disconnecting it
     if(sockfd >= 0) ::close(sockfd);
-
-    // we now clear our wolfssl session
-    // wolfSSL_set_fd(c_ssl, -1);
-    // wolfSSL_clear(c_ssl);
 
     // we free our wolfssl object
     wolfSSL_free(c_ssl);
