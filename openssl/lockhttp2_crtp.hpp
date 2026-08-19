@@ -1637,8 +1637,17 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
         int req_mem = base_url_length + 5; // we add an extra 5 bytes to the base url length to accomodate for the port number we would append before passing ths url to bio new connect
 
         // SSL members initialisations
-        c_bio = BIO_new_ssl_connect(ssl_ctx); // creates a new bio ssl object
-        BIO_get_ssl(c_bio, &c_ssl); // get the SSL structure component of the ssl bio for per instance SSL settings
+
+        // we creates a new bio ssl object if one wasn't created before
+        if(c_bio == nullptr){
+            
+            c_bio = BIO_new_ssl_connect(ssl_ctx);
+
+            // get the SSL structure component of the ssl bio for per instance SSL settings
+            BIO_get_ssl(c_bio, &c_ssl);
+
+        }
+
         if(c_ssl == NULL){
             
             strcpy(error_buffer, "Error fetching SSL structure pointer ");
