@@ -1600,26 +1600,14 @@ bool lock_http2_client_nb::basic_read(){
        
 bool lock_http2_client_nb::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a https connection by using the parameterless constructor, or to connect an already established https connection and lock client instance to a different https server, it can also be used to retry connecting an instance that encountered an error during connection
     
-    if(client_state == CLOSED){
-        
-        // erase previous error message
-        memset(error_buffer, '\0', strlen(error_buffer));
-        
-        error = false;
-        
-    }
-    else{ // the lock client instance has a connection in open state
-        
-        // erase any previous error message
-        memset(error_buffer, '\0', strlen(error_buffer));
-        
-        // sets the error flag to false first so the close function can run
-        error = false;
-        
-        // we close our https connection
-        close();
-            
-    }
+    // we close the https connection - if this handle was connected before, if it wasn't close is still a safe operation
+    close();
+
+    // erase any previous error message
+    memset(error_buffer, '\0', strlen(error_buffer));
+
+    // we set our error flag to false
+    error = false;
   
     // check if url is a https:// endpoint, check case insensitively - we only implement the https client
         
@@ -1633,14 +1621,14 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
         int req_mem = base_url_length + 5; // we add an extra 5 bytes to the base url length to accomodate for the port number we would append before passing ths url to bio new connect
 
         // SSL members initialisations
-        
+
         // we creates a new bio ssl object if one wasn't created before
         if(c_bio == nullptr){
             
             c_bio = BIO_new_ssl_connect(ssl_ctx);
 
             // get the SSL structure component of the ssl bio for per instance SSL settings
-            BIO_get_ssl(c_bio, &c_ssl);
+            if(c_bio != nullptr) BIO_get_ssl(c_bio, &c_ssl);
 
         }
 
@@ -1732,7 +1720,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
 
             }
             
-            if(!error){ // checks if there was any error allocating memory, that is if that part of the code was executed. The constructor only continues if there was no error 
+            if(!error){ // checks if there was any error allocating memory, that is if that part of the code was executed. The constructor only continues if there was no error
                 
                 // we append our port number - we use strcat here because the array length check already checks that we have enough space in the array to accomodate for the port number
                 strcat(c_url, ":443");
@@ -2982,17 +2970,13 @@ void lock_http2_client_nb::unblock_sigpipe_signal(){
      
 bool lock_http2_client_nb::close(){ // this closes an established https connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same https server using the connect function
 
-    if(!error){ // only continue if no error
-        
-        // we call bio reset on our bio
-        BIO_reset(c_bio);
+    // we call bio reset on our bio
+    BIO_reset(c_bio);
 
-        // we set our client state to closed
-        client_state = CLOSED;
-                
-    }
+    // we set our client state to closed
+    client_state = CLOSED;
     
-    return error; // returning an error of 1 from the close function just means that the close was not a clean one but it was successful nonetheless, and the close function does not write any message to the error buffer
+    return error;
 }
 
 #pragma GCC diagnostic pop
