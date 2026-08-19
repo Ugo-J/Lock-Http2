@@ -1864,8 +1864,8 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
         // size of required memory in bytes to store the base url
         int req_mem = base_url_length;
 
-        // we create our ssl object
-        c_ssl = wolfSSL_new(ssl_ctx);
+        // we create our ssl object if one wasn't created before
+        if(c_ssl == nullptr) c_ssl = wolfSSL_new(ssl_ctx);
     
         if(!error){ // the constructor continues only if there was no error fetching the ssl pointer
 
@@ -1889,7 +1889,7 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
                 
             
             }
-            else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not 
+            else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not
                 
                 if(c_url_new == NULL){ // memory has not yet been allocated
                     
