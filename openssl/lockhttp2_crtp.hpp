@@ -1486,11 +1486,18 @@ bool lock_http2_client_nb_crtp<T>::basic_read(){
             }
             else{
 
-                // here wolfssl_read couldn't fetch any data
+                // here openssl_read couldn't fetch any data
                 strcpy(error_buffer, "Read failure while polling inbound queue: ");
 
-                // we concatenate the openssl error
-                ERR_error_string(len, error_buffer + strlen(error_buffer));
+                // we fetch the openssl error
+                unsigned long ssl_err = ERR_get_error();
+
+                if(ssl_err != 0){
+                    ERR_error_string(ssl_err, error_buffer + strlen(error_buffer));
+                }
+                else{
+                    strcat(error_buffer, "connection closed without close_notify");
+                }
 
                 error = true;
 
