@@ -1855,8 +1855,8 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
         // size of required memory in bytes to store the base url
         int req_mem = base_url_length;
 
-        // we create our ssl object
-        c_ssl = wolfSSL_new(ssl_ctx);
+        // we create our ssl object if one wasn't created before
+        if(c_ssl == nullptr) c_ssl = wolfSSL_new(ssl_ctx);
     
         if(!error){ // the constructor continues only if there was no error fetching the ssl pointer
 
