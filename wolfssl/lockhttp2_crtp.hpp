@@ -1834,16 +1834,19 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
     
     if(client_state == CLOSED){
         
-        memset(error_buffer, '\0', strlen(error_buffer)); // erase previous error message
+        // erase previous error message
+        memset(error_buffer, '\0', strlen(error_buffer));
         
         error = false;
         
     }
     else{ // the lock client instance has a http connection in open state
         
-        memset(error_buffer, '\0', strlen(error_buffer)); // erase any previous error message
+        // erase any previous error message
+        memset(error_buffer, '\0', strlen(error_buffer));
         
-        error = false; // sets the error flag to false first so the close function can run 
+        // sets the error flag to false first so the close function can run
+        error = false;
         
         // we close the https connection
         close();
