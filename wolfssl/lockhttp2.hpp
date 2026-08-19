@@ -928,7 +928,9 @@ lock_http2_client_nb::lock_http2_client_nb(){
 
         if(ca_ret != WOLFSSL_SUCCESS){
 
-            strncpy(error_buffer, "Failed to load system CA bundle.", error_buffer_array_length);
+            strcpy(error_buffer, "Failed to load system CA bundle.");
+
+            std::cout<<error_buffer<<std::endl;
 
             error = true;
         }
@@ -953,91 +955,19 @@ lock_http2_client_nb::lock_http2_client_nb(){
 
         // NGHTTP2 INITIALISATION
 
-        // continue if no error
-        if(!error){
+        // we set our http2 protocol headers so any user defined header can come after these protocol headers as required by the protocol
 
-            // we set our nghttp2 callbacks
+        // we set our method pseudo header with nullptr value, when connect is called this header's index is stored
+        set_header(":method", nullptr);
 
-            nghttp2_session_callbacks *callbacks = nullptr;
+        // we set our path pseudo header with, when connect is called this header's index is stored
+        set_header(":path", nullptr);
 
-            // we initialise our local callback function
-            int rv = nghttp2_session_callbacks_new(&callbacks);
+        // we set our scheme pseudo header with nullptr, this value is updated after a connection is established
+        set_header(":scheme", nullptr);
 
-            if(rv != 0){
-
-                strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
-
-                error = true;
-
-            }
-
-            // continue if no error
-            if(!error){
-
-                // we set our http2 protocol headers so any user defined header can come after these protocol headers as required by the protocol
-
-                // we set our method pseudo header with nullptr value, when connect is called this header's index is stored
-                set_header(":method", nullptr);
-
-                // we set our path pseudo header with, when connect is called this header's index is stored
-                set_header(":path", nullptr);
-
-                // we set our scheme pseudo header with nullptr, this value is updated after a connection is established
-                set_header(":scheme", nullptr);
-
-                // we set our authority pseudo header with nullptr, this value is updated when a connection is established
-                set_header(":authority", nullptr);
-
-                // Register our callbacks
-                nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
-                nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
-                nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
-                nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
-
-                // now we initialise our session client
-                rv = nghttp2_session_client_new(&session, callbacks, this);
-
-                // our callbacks are copied internally into our session object so we delete the callback pointer here
-                nghttp2_session_callbacks_del(callbacks);
-
-                if(rv != 0){
-                    
-                    strcpy(error_buffer, "Failed to create nghttp2 client session: ");
-
-                    // we concatenate the nghttp2 specific error
-                    strcat(error_buffer, nghttp2_strerror(rv));
-                
-                    error = true;
-
-                }
-
-                // continue if no error
-                if(!error){
-
-                    // we declare our nghttp2 settings struct and set our max concurrent streams in it
-                    nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
-
-                    // we submit our settings
-                    rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
-
-                    if(rv != 0){
-
-                        strcpy(error_buffer, "Failed to submit initial Settings frame: ");
-
-                        // we concatenate the nghttp2 specific error
-                        strcat(error_buffer, nghttp2_strerror(rv));
-                    
-                        error = true;
-
-                    }
-                    
-                    // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
-
-                }
-
-            }
-
-        }
+        // we set our authority pseudo header with nullptr, this value is updated when a connection is established
+        set_header(":authority", nullptr);
 
     }
     
@@ -1707,15 +1637,14 @@ bool lock_http2_client_nb::basic_read(){
                 strcpy(error_buffer, "Read failure while polling inbound queue: ");
 
                 // we concatenate the wolfssl error
-                wc_ErrorString(err, error_buffer + strlen(error_buffer));
+                wolfSSL_ERR_error_string(err, error_buffer + strlen(error_buffer));
 
                 error = true;
 
-                // we unblock the sigpipe signal
+                // Unblock sigpipe signal
                 unblock_sigpipe_signal();
 
                 return error;
-
             }
 
         }
@@ -1822,28 +1751,88 @@ bool lock_http2_client_nb::basic_read(){
 }
        
 bool lock_http2_client_nb::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a http connection by using the parameterless constructor, or to connect an already established http connection and lock client instance to a different http server, it can also be used to retry connecting an instance that encountered an error during connection
+
+    // we close the https connection if this handle has been connected before
+    close();
+
+    // erase any previous error message
+    memset(error_buffer, '\0', strlen(error_buffer));
     
-    if(client_state == CLOSED){
-        
-        // erase previous error message
-        memset(error_buffer, '\0', strlen(error_buffer));
-        
-        error = false;
-        
+    // sets the error flag to false first so the close function can run
+    error = false;
+
+    // NGHTTP2 INITIALISATION
+
+    // we set our nghttp2 callbacks
+
+    nghttp2_session_callbacks *callbacks = nullptr;
+
+    // we initialise our local callback function
+    int rv = nghttp2_session_callbacks_new(&callbacks);
+
+    if(rv != 0){
+
+        strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+        error = true;
+
     }
-    else{ // the lock client instance has a http connection in open state
-        
-        // erase any previous error message
-        memset(error_buffer, '\0', strlen(error_buffer));
-        
-        // sets the error flag to false first so the close function can run
-        error = false;
-        
-        // we close our https connection
-        close();
+
+    // continue if no error
+    if(!error){
+
+        // Register our callbacks
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+        // now we initialise our session client
+        rv = nghttp2_session_client_new(&session, callbacks, this);
+
+        // our callbacks are copied internally into our session object so we delete the callback pointer here
+        nghttp2_session_callbacks_del(callbacks);
+
+        if(rv != 0){
             
+            strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+            // we concatenate the nghttp2 specific error
+            strcat(error_buffer, nghttp2_strerror(rv));
+        
+            error = true;
+
+        }
+
+        // continue if no error
+        if(!error){
+
+            // we declare our nghttp2 settings struct and set our max concurrent streams in it
+            nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+            // we submit our settings
+            rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                // we concatenate the nghttp2 specific error
+                strcat(error_buffer, nghttp2_strerror(rv));
+            
+                error = true;
+
+            }
+            
+            // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+        }
+
     }
-  
+
+
+    // NGHTTP2 INITIALISATION END
+
     // check if url is a https:// endpoint, check case insensitively - for the wolfssl client we only implement the https client
         
     if(url.compare(0, 8, "https://") == 0){
@@ -1880,7 +1869,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
                 
             
             }
-            else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not 
+            else{ // neither static or dynamic memory is large enough, we test whether memory has already been allocated or not
                 
                 if(c_url_new == NULL){ // memory has not yet been allocated
                     
@@ -1943,7 +1932,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
     }
     else{ // not a valid/supported http endpoint
         
-        strncpy(error_buffer, "Supplied URL parameter is not a valid/supported HTTP endpoint", error_buffer_array_length);
+        strcpy(error_buffer, "Supplied URL parameter is not a valid/supported HTTP endpoint");
                 
         error = true;
         
@@ -2009,7 +1998,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
         
                 if(c_host_new == NULL){
             
-                    strncpy(error_buffer, "Error allocating heap memory for server host name ", error_buffer_array_length);
+                    strcpy(error_buffer, "Error allocating heap memory for server host name ");
                 
                     error = true;    
             
@@ -2034,7 +2023,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
         if(!error){ // only continue if no error
         
             // we set the host name we wish to connect to for server name identification(SNI) if the http address passed is a wss:// address. We test this by checking that the c_ssl pointer is non-null
-            if(!(c_ssl == NULL)){
+            if(c_ssl != NULL){
                 
                 if(!wolfSSL_UseSNI(c_ssl, WOLFSSL_SNI_HOST_NAME, c_host, host_name_len)){
                 // we test the return value. wolfSSL_UseSNI returns 0 on error and 1 on success
@@ -2129,8 +2118,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
 
                             // we set our http headers
 
-                            // we first clear all previous headers
-                            clear_all_headers();
+                            // our pseudo headers are already set in our constructor so these calls just update it while retaining any user set headers
 
                             // we set our method pseudo header with nullptr value so we can get the index to update it with
                             method_index = set_header(":method", nullptr);
@@ -2162,23 +2150,92 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
 
 bool lock_http2_client_nb::interface_connect(std::string_view url, in_addr* interface_address, char* interface_name){
     
-    if(client_state == CLOSED){
-        
-        memset(error_buffer, '\0', strlen(error_buffer)); // erase previous error message
-        
-        error = false;
-        
+    // we close the https connection if this handle has been connected before
+    close();
+
+    // erase any previous error message
+    memset(error_buffer, '\0', strlen(error_buffer));
+    
+    // sets the error flag to false first so the close function can run
+    error = false;
+
+    // NGHTTP2 INITIALISATION
+
+    // we set our nghttp2 callbacks
+
+    nghttp2_session_callbacks *callbacks = nullptr;
+
+    // we initialise our local callback function
+    int rv = nghttp2_session_callbacks_new(&callbacks);
+
+    if(rv != 0){
+
+        strcpy(error_buffer, "Failed to initialise nghttp2 callbacks");
+
+        error = true;
+
+        return error;
+
     }
-    else{ // the lock client instance has a http connection in open state
-        
-        memset(error_buffer, '\0', strlen(error_buffer)); // erase any previous error message
-        
-        error = false; // sets the error flag to false first so the close function can run 
-        
-        // we close our https connection
-        close();
+
+    // continue if no error
+    if(!error){
+
+        // Register our callbacks
+        nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks, on_frame_recv_cb);
+        nghttp2_session_callbacks_set_on_data_chunk_recv_callback(callbacks, on_data_chunk_recv_cb);
+        nghttp2_session_callbacks_set_on_stream_close_callback(callbacks, on_stream_close_cb);
+        nghttp2_session_callbacks_set_on_header_callback(callbacks, on_header_cb);
+
+        // now we initialise our session client
+        rv = nghttp2_session_client_new(&session, callbacks, this);
+
+        // our callbacks are copied internally into our session object so we delete the callback pointer here
+        nghttp2_session_callbacks_del(callbacks);
+
+        if(rv != 0){
             
+            strcpy(error_buffer, "Failed to create nghttp2 client session: ");
+
+            // we concatenate the nghttp2 specific error
+            strcat(error_buffer, nghttp2_strerror(rv));
+        
+            error = true;
+
+            return error;
+
+        }
+
+        // continue if no error
+        if(!error){
+
+            // we declare our nghttp2 settings struct and set our max concurrent streams in it
+            nghttp2_settings_entry iv[1] = { {NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS, MAX_CONCURRENT_STREAMS} };
+
+            // we submit our settings
+            rv = nghttp2_submit_settings(session, NGHTTP2_FLAG_NONE, iv, std::size(iv));
+
+            if(rv != 0){
+
+                strcpy(error_buffer, "Failed to submit initial Settings frame: ");
+
+                // we concatenate the nghttp2 specific error
+                strcat(error_buffer, nghttp2_strerror(rv));
+            
+                error = true;
+
+                return error;
+
+            }
+            
+            // if we get here without error, the connection magic "PRI * HTTP/2.0..." and our SETTINGS frame are sitting inside the internal nghttp2 memory buffer. They will not go anywhere until we execute our outbound serialization/network pump (via nghttp2_session_mem_send2).
+
+        }
+
     }
+
+
+    // NGHTTP2 INITIALISATION END
 
     // check if url is a https:// endpoint, check case insensitively - for the wolfssl client we only implement the https client
         
@@ -2373,7 +2430,7 @@ bool lock_http2_client_nb::interface_connect(std::string_view url, in_addr* inte
         if(!error){ // only continue if no error
         
             // we set the host name we wish to connect to for server name identification(SNI)
-            if(!(c_ssl == NULL)){
+            if(c_ssl != NULL){
                 
                 if(!wolfSSL_UseSNI(c_ssl, WOLFSSL_SNI_HOST_NAME, c_host, host_name_len)){
                 // we test the return value. wolfSSL_UseSNI returns 0 on error and 1 on success
@@ -2468,8 +2525,7 @@ bool lock_http2_client_nb::interface_connect(std::string_view url, in_addr* inte
 
                             // we set our http headers
 
-                            // we first clear all previous headers
-                            clear_all_headers();
+                            // our pseudo headers are already set in our constructor so these calls just update it while retaining any user set headers
 
                             // we set our method pseudo header with nullptr value so we can get the index to update it with
                             method_index = set_header(":method", nullptr);
@@ -3209,15 +3265,25 @@ int lock_http2_client_nb::reset(){
 
     if(!c_ssl) return 0;
 
+    // we destroy our nghttp2 session object
+    if(session != nullptr){
+
+        nghttp2_session_del(session);
+        session = nullptr;
+
+    }
+
     // we fetch the active socket fd
     int sockfd = wolfSSL_get_fd(c_ssl);
 
     // if a valid socket is bound, we first close it effectively disconnecting it
     if(sockfd >= 0) ::close(sockfd);
 
-    // we now clear our wolfssl session
-    wolfSSL_set_fd(c_ssl, -1);
-    wolfSSL_clear(c_ssl);
+    // we free our wolfssl object
+    wolfSSL_free(c_ssl);
+
+    // we set our c_ssl pointer to null
+    c_ssl = nullptr;
 
     return 0;
 
@@ -3244,17 +3310,13 @@ void lock_http2_client_nb::unblock_sigpipe_signal(){
 }
      
 bool lock_http2_client_nb::close(){ // this closes an established http connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same http server using the connect function
-
-    if(!error){ // only continue if no error
-        
-        // we disconnect our underlying connection
-        reset();
-
-        client_state = CLOSED;
-
-    }
     
-    return error; // returning an error of 1 from the close function just means that the close was not a clean one but it was successful nonetheless, and the close function does not write any message to the error buffer
+    // we disconnect our underlying connection
+    reset();
+
+    client_state = CLOSED;
+    
+    return error;
 }
 
 #pragma GCC diagnostic pop

@@ -3340,7 +3340,7 @@ bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established http c
 
     client_state = CLOSED;
     
-    return error; // returning an error of 1 from the close function just means that the close was not a clean one but it was successful nonetheless, and the close function does not write any message to the error buffer
+    return error;
 }
 
 #pragma GCC diagnostic pop
