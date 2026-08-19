@@ -100,7 +100,17 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url){
 
         // SSL members initialisations
         c_bio = BIO_new_ssl_connect(ssl_ctx); // creates a new bio ssl object
-        BIO_get_ssl(c_bio, &c_ssl); // get the SSL structure component of the ssl bio for per instance SSL settings
+
+        // get the SSL structure component of the ssl bio for per instance SSL settings
+        if(c_bio != nullptr){
+        
+            BIO_get_ssl(c_bio, &c_ssl);
+
+            // we set our bio to no close
+            BIO_set_close(c_bio, BIO_NOCLOSE);
+
+        }
+
         if(c_ssl == NULL){
             
             strcpy(error_buffer, "Error fetching SSL structure pointer ");
@@ -350,9 +360,6 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url){
                         strcpy(error_buffer, "h2 protocol was not negotiated");
 
                         error = true;
-
-                        // we reset our bio
-                        BIO_reset(c_bio);
                     }
 
                     // only continue if no error
@@ -655,7 +662,7 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
             // only continue if no error
 
                 // we create an SSL object for this lock client instance
-                SSL *c_ssl = SSL_new(ssl_ctx);
+                c_ssl = SSL_new(ssl_ctx);
                 if(c_ssl == NULL){
                     
                     strcpy(error_buffer, "Error creating SSL structure ");
@@ -675,8 +682,8 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
                     // we set our alpn protos on our ssl object to indicate that this handle only negotiates http2 protocol
                     SSL_set_alpn_protos(c_ssl, (const unsigned char *)"\x02h2", 3);
 
-                    // Create BIO for this socket
-                    BIO* sock_bio = BIO_new_socket(sock, BIO_NOCLOSE);
+                    // Create BIO for this socket - we set this socket with the BIO_CLOSE flag so bio free closes the underlying socket
+                    BIO* sock_bio = BIO_new_socket(sock, BIO_CLOSE);
                     if(!sock_bio){
                         
                         SSL_free(c_ssl);
@@ -690,7 +697,9 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
 
                         // now we create an SSL BIO
                         BIO* ssl_bio = BIO_new(BIO_f_ssl());
-                        BIO_set_ssl(ssl_bio, c_ssl, BIO_CLOSE);
+
+                        // we create the ssl bio with the NOCLOSE flag so bio free does not free the underlying ssl object
+                        BIO_set_ssl(ssl_bio, c_ssl, BIO_NOCLOSE);
 
                         // Chain ssl_bio and sock_bio together
                         c_bio = BIO_push(ssl_bio, sock_bio);
@@ -709,7 +718,6 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
                             }
                             else{
                                 
-                                BIO_free_all(c_bio); // this throws segmentation fault when called without any network connection
                                 strcpy(error_buffer, "TLS handshake failed");          
                                 error = true;
 
@@ -731,9 +739,6 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
                                 strcpy(error_buffer, "h2 protocol was not negotiated");
 
                                 error = true;
-
-                                // we reset our bio
-                                BIO_reset(c_bio);
                             }
 
                             // only continue if no error
@@ -1905,9 +1910,6 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
                         strcpy(error_buffer, "h2 protocol was not negotiated");
 
                         error = true;
-
-                        // we reset our bio
-                        BIO_reset(c_bio);
                     }
 
                     // only continue if no error
@@ -1915,8 +1917,7 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
 
                         // we set our http headers
 
-                        // we first clear all previous headers
-                        clear_all_headers();
+                        // our pseudo headers are already set in our constructor so these calls just update it while retaining any user set headers
 
                         // we set our method pseudo header with nullptr value so we can get the index to update it with
                         method_index = set_header(":method", nullptr);
@@ -2159,7 +2160,7 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
                 
                         strcpy(error_buffer, "Error allocating heap memory for server host name ");
                     
-                        error = true;    
+                        error = true;   
                 
                     }
                     else{
@@ -2247,8 +2248,8 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
                     // we set our alpn protos on our ssl object to indicate that this handle only negotiates http2 protocol
                     SSL_set_alpn_protos(c_ssl, (const unsigned char *)"\x02h2", 3);
 
-                    // Create a local BIO for this socket
-                    BIO* sock_bio = BIO_new_socket(sock, BIO_NOCLOSE);
+                    // Create BIO for this socket - we set this socket with the BIO_CLOSE flag so bio free closes the underlying socket
+                    BIO* sock_bio = BIO_new_socket(sock, BIO_CLOSE);
                     if(!sock_bio){
                         
                         SSL_free(c_ssl);
@@ -2280,9 +2281,8 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
 
                             }
                             else{
-                                
-                                BIO_free_all(c_bio); // this throws segmentation fault when called without any network connection
-                                strcpy(error_buffer, "TLS handshake failed");          
+
+                                strcpy(error_buffer, "TLS handshake failed");
                                 error = true;
 
                             }
@@ -2304,8 +2304,6 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
 
                                 error = true;
 
-                                // we reset our bio
-                                BIO_reset(c_bio);
                             }
 
                             // only continue if no error
@@ -2313,8 +2311,7 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
 
                                 // we set our http headers
 
-                                // we first clear all previous headers
-                                clear_all_headers();
+                                // our pseudo headers are already set in our constructor so these calls just update it while retaining any user set headers
 
                                 // we set our method pseudo header with nullptr value so we can get the index to update it with
                                 method_index = set_header(":method", nullptr);
