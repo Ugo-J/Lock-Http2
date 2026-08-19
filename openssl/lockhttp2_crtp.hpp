@@ -1645,7 +1645,14 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
             c_bio = BIO_new_ssl_connect(ssl_ctx);
 
             // get the SSL structure component of the ssl bio for per instance SSL settings
-            if(c_bio != nullptr) BIO_get_ssl(c_bio, &c_ssl);
+            if(c_bio != nullptr){
+            
+                BIO_get_ssl(c_bio, &c_ssl);
+
+                // we set our bio to no close
+                BIO_set_close(c_bio, BIO_NOCLOSE);
+
+            }
 
         }
 
@@ -2255,7 +2262,7 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
 
                         // now we create a local SSL BIO
                         BIO* ssl_bio = BIO_new(BIO_f_ssl());
-                        BIO_set_ssl(ssl_bio, c_ssl, BIO_CLOSE);
+                        BIO_set_ssl(ssl_bio, c_ssl, BIO_NOCLOSE);
 
                         // Chain ssl_bio and sock_bio together
                         c_bio = BIO_push(ssl_bio, sock_bio);
@@ -3082,7 +3089,7 @@ void lock_http2_client_nb_crtp<T>::unblock_sigpipe_signal(){
 }
 
 template <typename T>
-bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established https connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same https server using the connect function
+bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established https connection
     
     // we destroy our nghttp2 session object
     if(session != nullptr){
@@ -3092,26 +3099,23 @@ bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established https 
 
     }
 
-    // we clear our ssl object
-    if(c_ssl != nullptr){
-        
-        // we shutdown our ssl connection if it is still active
-        SSL_shutdown(c_ssl);
+    // we free our bio object chain if non null
+    if(c_bio != nullptr){
 
-        // we clear our ssl object
-        SSL_clear(c_ssl);
+        BIO_free_all(c_bio); // Frees ssl_bio and sock_bio safely
+        c_bio = nullptr;
     }
 
-    // we reset our bio object if non null
-    if(c_bio != nullptr){
-        
-        BIO_reset(c_bio);
+    // we free our ssl object
+    if(c_ssl != nullptr){
 
+        SSL_free(c_ssl);
+        c_ssl = nullptr;
     }
 
     // we set our client state to closed
     client_state = CLOSED;
-    
+
     return error;
 }
 
