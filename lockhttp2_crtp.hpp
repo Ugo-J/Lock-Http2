@@ -1,5 +1,5 @@
-#ifndef LOCKHTTP2_MAIN_HEADER_HPP
-#define LOCKHTTP2_MAIN_HEADER_HPP
+#ifndef LOCKHTTP2_CRTP_MAIN_HEADER_HPP
+#define LOCKHTTP2_CRTP_MAIN_HEADER_HPP
 
 #ifdef USE_WOLFSSL
     // If the compiled with -DUSE_WOLFSSL, route to the wolfSSL variant
