@@ -3,10 +3,6 @@
 #include "lockhttp2_headers.hpp"
 #include "lockhttp2_structure_crtp.hpp"
 
-// use the following pragma declaration to suppress the shift overflow warning
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshift-count-overflow"
-
 // non blocking lock client function variants
 
 // constructor with url string
@@ -3115,5 +3111,3 @@ bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established https 
 
     return error;
 }
-
-#pragma GCC diagnostic pop
