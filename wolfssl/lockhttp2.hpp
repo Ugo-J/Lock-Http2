@@ -3,15 +3,10 @@
 #include "lockhttp2_headers.hpp"
 #include "lockhttp2_structure.hpp"
 
-// use the following pragma declaration to suppress the shift overflow warning
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshift-count-overflow"
-
-
 // non blocking lock client function variants
 
 // constructor with url string
-lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
+inline lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
 
     if(wolfSSL_Init() != WOLFSSL_SUCCESS){
 
@@ -454,7 +449,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
 }
 
 // constructor that binds to a network interface
-lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interface_address, char* interface_name){
+inline lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interface_address, char* interface_name){
 
     if(wolfSSL_Init() != WOLFSSL_SUCCESS){
 
@@ -900,7 +895,7 @@ lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr* interf
 }
 
 // parameterless constructor
-lock_http2_client_nb::lock_http2_client_nb(){
+inline lock_http2_client_nb::lock_http2_client_nb(){
     
     if(wolfSSL_Init() != WOLFSSL_SUCCESS){
 
@@ -974,7 +969,7 @@ lock_http2_client_nb::lock_http2_client_nb(){
 }
 
 // destructor
-lock_http2_client_nb::~lock_http2_client_nb(){
+inline lock_http2_client_nb::~lock_http2_client_nb(){
     
     // close the http connection if any
     if(client_state == OPEN){
@@ -1029,26 +1024,26 @@ lock_http2_client_nb::~lock_http2_client_nb(){
     
 }
 
-int lock_http2_client_nb::on_frame_recv_cb(nghttp2_session *session, const nghttp2_frame *frame, void *user_data){
+inline int lock_http2_client_nb::on_frame_recv_cb(nghttp2_session *session, const nghttp2_frame *frame, void *user_data){
 
     lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
     return client->handle_frame_recv(frame);
 }
 
-int lock_http2_client_nb::on_data_chunk_recv_cb(nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_data){
+inline int lock_http2_client_nb::on_data_chunk_recv_cb(nghttp2_session *session, uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len, void *user_data){
 
     lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
     return client->handle_data_chunk(flags, stream_id, data, len);
 
 }
 
-int lock_http2_client_nb::on_stream_close_cb(nghttp2_session *session, int32_t stream_id, uint32_t error_code, void *user_data){
+inline int lock_http2_client_nb::on_stream_close_cb(nghttp2_session *session, int32_t stream_id, uint32_t error_code, void *user_data){
 
     lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
     return client->handle_stream_close(stream_id, error_code);
 }
 
-long lock_http2_client_nb::send_body_provider_cb(nghttp2_session *session, int32_t stream_id, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void *user_data){
+inline long lock_http2_client_nb::send_body_provider_cb(nghttp2_session *session, int32_t stream_id, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void *user_data){
 
     // we fetch our send data provider state, because our send data provider is a nameless struct we use decltype to get its pointer type
     decltype(send_data_provider)* d_provider = static_cast<decltype(send_data_provider)*>(source->ptr);
@@ -1082,7 +1077,7 @@ long lock_http2_client_nb::send_body_provider_cb(nghttp2_session *session, int32
     return static_cast<long>(to_copy);
 }
 
-int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data){
+inline int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_frame *frame, const uint8_t *name, size_t namelen, const uint8_t *value, size_t valuelen, uint8_t flags, void *user_data){
 
     lock_http2_client_nb* client = static_cast<lock_http2_client_nb*>(user_data);
 
@@ -1093,7 +1088,7 @@ int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const nghttp2_f
 
 }
 
-int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
+inline int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
 
     // we use this switch case to handle different header types
     /* switch(frame->hd.type){
@@ -1127,7 +1122,7 @@ int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
     return 0;
 }
 
-int lock_http2_client_nb::default_header_receive(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id){
+inline int lock_http2_client_nb::default_header_receive(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id){
 
     // std::cout<<"[User Id "<<user_id<<"] Header -> "<<name<<": "<<value<<"\n";
 
@@ -1135,7 +1130,7 @@ int lock_http2_client_nb::default_header_receive(const char* name, size_t namele
 
 }
 
-int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len){
+inline int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len){
 
     // we fetch our stream data for this request
     meta_data* stream_metadata = static_cast<meta_data*>(nghttp2_session_get_stream_user_data(session, stream_id));
@@ -1212,7 +1207,7 @@ int lock_http2_client_nb::handle_data_chunk(uint8_t flags, int32_t stream_id, co
 
 }
 
-int lock_http2_client_nb::handle_stream_close(int32_t stream_id, uint32_t error_code){
+inline int lock_http2_client_nb::handle_stream_close(int32_t stream_id, uint32_t error_code){
 
     if(error_code == NGHTTP2_NO_ERROR){
 
@@ -1266,7 +1261,7 @@ inline bool lock_http2_client_nb::is_open(){
     return (client_state == OPEN) ? true : false;
 }
 
-bool lock_http2_client_nb::ping(){ // sends a ping on an established http connection
+inline bool lock_http2_client_nb::ping(){ // sends a ping on an established http connection
     
     if(!error){ // only continue if no error
         
@@ -1392,7 +1387,7 @@ inline bool lock_http2_client_nb::clear(){ // clear the error flag of a lock cli
     
 }
 
-bool lock_http2_client_nb::send(char* path, char* payload_data, int method, int id){ // sends data passed as parameter along an established http connection
+inline bool lock_http2_client_nb::send(char* path, char* payload_data, int method, int id){ // sends data passed as parameter along an established http connection
 
     if(!error){ // only continue if no error
     
@@ -1568,25 +1563,25 @@ inline int lock_http2_client_nb::default_error_receive(int id){
     
 }
 
-void lock_http2_client_nb::set_receive_function(lock_function fn){
+inline void lock_http2_client_nb::set_receive_function(lock_function fn){
     
     recv_data = std::move(fn);
     
 }
 
-void lock_http2_client_nb::set_error_receive_function(lock_error_function fn){
+inline void lock_http2_client_nb::set_error_receive_function(lock_error_function fn){
     
     recv_error = std::move(fn);
     
 }
 
-void lock_http2_client_nb::set_header_receive_function(lock_header_function fn){
+inline void lock_http2_client_nb::set_header_receive_function(lock_header_function fn){
 
     recv_header = std::move(fn);
 
 }
 
-bool lock_http2_client_nb::basic_read(){
+inline bool lock_http2_client_nb::basic_read(){
 
     if(!error){ // only continue if no error
         
@@ -1750,7 +1745,7 @@ bool lock_http2_client_nb::basic_read(){
         
 }
        
-bool lock_http2_client_nb::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a http connection by using the parameterless constructor, or to connect an already established http connection and lock client instance to a different http server, it can also be used to retry connecting an instance that encountered an error during connection
+inline bool lock_http2_client_nb::connect(std::string_view url){ // this is used to connect to connect to the url passed as a parameter, it can be used when a lock client object was created without establishing a http connection by using the parameterless constructor, or to connect an already established http connection and lock client instance to a different http server, it can also be used to retry connecting an instance that encountered an error during connection
 
     // we close the https connection if this handle has been connected before
     close();
@@ -2148,7 +2143,7 @@ bool lock_http2_client_nb::connect(std::string_view url){ // this is used to con
         
 }
 
-bool lock_http2_client_nb::interface_connect(std::string_view url, in_addr* interface_address, char* interface_name){
+inline bool lock_http2_client_nb::interface_connect(std::string_view url, in_addr* interface_address, char* interface_name){
     
     // we close the https connection if this handle has been connected before
     close();
@@ -2555,7 +2550,7 @@ bool lock_http2_client_nb::interface_connect(std::string_view url, in_addr* inte
     return error;
 }
 
-int lock_http2_client_nb::connect_to_server(const char *hostname, const char *port, in_addr* interface_address, const char *interface_name){
+inline int lock_http2_client_nb::connect_to_server(const char *hostname, const char *port, in_addr* interface_address, const char *interface_name){
 
     struct addrinfo hints, *res = NULL, *p = NULL;
 
@@ -2648,7 +2643,7 @@ int lock_http2_client_nb::connect_to_server(const char *hostname, const char *po
     return sock; // Return the connected socket
 }
 
-int lock_http2_client_nb::reserve(int num_of_slots, int size, bool priori_heap){
+inline int lock_http2_client_nb::reserve(int num_of_slots, int size, bool priori_heap){
 
     // this function reserves size memory in num_of_slots heap slots - it does not acquire the slots in question but just ensures that slots of size are available on the heap slots without having to allocate them on the go. so after calling reserve, immediately calling acquire heap() would very likely return one of these reserved slots
 
@@ -2748,7 +2743,7 @@ int lock_http2_client_nb::reserve(int num_of_slots, int size, bool priori_heap){
     return count;
 }
 
-int lock_http2_client_nb::acquire(){
+inline int lock_http2_client_nb::acquire(){
 
     // the builtin ctz function is undefined when passed a parameter of 0 so we check that the static mask isn't 0
 
@@ -2844,7 +2839,7 @@ int lock_http2_client_nb::acquire(){
 
 }
 
-int lock_http2_client_nb::acquire_heap(){
+inline int lock_http2_client_nb::acquire_heap(){
 
     // the acquire heap function with no parameters prioritises acquiring slots from the heap memory first, it only falls back to static slot if a slot couldn't be acquired from the heap
 
@@ -2938,7 +2933,7 @@ int lock_http2_client_nb::acquire_heap(){
 
 }
 
-int lock_http2_client_nb::acquire_heap(int sz){
+inline int lock_http2_client_nb::acquire_heap(int sz){
 
     // this function acquires a defined memory size off the heap and associate it with a heap slot
 
@@ -3007,7 +3002,7 @@ int lock_http2_client_nb::acquire_heap(int sz){
 
 }
 
-void lock_http2_client_nb::release(int slot){
+inline void lock_http2_client_nb::release(int slot){
 
     // we first check if the slot to release is a static slot or a heap slot
     if(slot < NUM_OF_STATIC_ARRAYS){
@@ -3021,7 +3016,7 @@ void lock_http2_client_nb::release(int slot){
 
 }
 
-int lock_http2_client_nb::set_header(const char* name, char* value){
+inline int lock_http2_client_nb::set_header(const char* name, char* value){
 
     // we check if the name parameter is null if it is we return immediately - the value parameter on the other hand permits a null value - a null value parameter just creates the header entry and returns the int index the application can pass to update header to update the header in place
     if(name == nullptr) return -1;
@@ -3121,7 +3116,7 @@ int lock_http2_client_nb::set_header(const char* name, char* value){
 
 }
 
-char* lock_http2_client_nb::get_header(char* name){
+inline char* lock_http2_client_nb::get_header(char* name){
 
     // we check if the supplied name is a nullptr, if so we return immediately
     if(name == nullptr) return nullptr;
@@ -3161,7 +3156,7 @@ char* lock_http2_client_nb::get_header(char* name){
 
 }
 
-char* lock_http2_client_nb::get_header_ptr(int index){
+inline char* lock_http2_client_nb::get_header_ptr(int index){
 
     // return nullptr if the supplied index is invalid or empty - this prevents us from updating a header value for a header we are not actively sending with our requests
     if(index < 0 || index >= num_of_headers) return nullptr;
@@ -3171,7 +3166,7 @@ char* lock_http2_client_nb::get_header_ptr(int index){
 
 }
 
-int lock_http2_client_nb::update_header_length(int index, int length){
+inline int lock_http2_client_nb::update_header_length(int index, int length){
 
     // return nullptr if the supplied index is invalid or empty - this prevents us from updating a header value for a header we are not actively sending with our requests
     if(index < 0 || index >= num_of_headers) return -1;
@@ -3186,7 +3181,7 @@ int lock_http2_client_nb::update_header_length(int index, int length){
 
 }
 
-char* lock_http2_client_nb::update_header(char* value, int index){
+inline char* lock_http2_client_nb::update_header(char* value, int index){
 
     // return nullptr if the supplied value is null
     if(value == nullptr) return nullptr;
@@ -3205,7 +3200,7 @@ char* lock_http2_client_nb::update_header(char* value, int index){
 
 }
 
-int lock_http2_client_nb::clear_header(int index){
+inline int lock_http2_client_nb::clear_header(int index){
 
     // this function clears a single header from the header list
 
@@ -3243,7 +3238,7 @@ int lock_http2_client_nb::clear_header(int index){
 
 }
 
-int lock_http2_client_nb::clear_headers(){
+inline int lock_http2_client_nb::clear_headers(){
 
     // this function clears all user supplied headers leaving only the pseudo headers, to do this we just set our num of headers to 4 which is the 4 pseudo headers we use: path, method, scheme and authority
     num_of_headers = 4;
@@ -3252,7 +3247,7 @@ int lock_http2_client_nb::clear_headers(){
 
 }
 
-int lock_http2_client_nb::clear_all_headers(){
+inline int lock_http2_client_nb::clear_all_headers(){
 
     // this is an internal function that clears all headers including pseudo headers by setting our num of headers to 0
     num_of_headers = 0;
@@ -3261,7 +3256,7 @@ int lock_http2_client_nb::clear_all_headers(){
 
 }
 
-int lock_http2_client_nb::reset(){
+inline int lock_http2_client_nb::reset(){
 
     if(!c_ssl) return 0;
 
@@ -3289,7 +3284,7 @@ int lock_http2_client_nb::reset(){
 
 }
 
-void lock_http2_client_nb::block_sigpipe_signal(){
+inline void lock_http2_client_nb::block_sigpipe_signal(){
 
     sigemptyset(&newset);
     sigemptyset(&oldset);
@@ -3298,7 +3293,7 @@ void lock_http2_client_nb::block_sigpipe_signal(){
     
 }
 
-void lock_http2_client_nb::unblock_sigpipe_signal(){
+inline void lock_http2_client_nb::unblock_sigpipe_signal(){
 
     // clear out any SIGPIPE signal that came in while we blocked it
     while(sigtimedwait(&newset, &si, &ts) >= 0 || errno != EAGAIN);
@@ -3309,7 +3304,7 @@ void lock_http2_client_nb::unblock_sigpipe_signal(){
     
 }
      
-bool lock_http2_client_nb::close(){ // this closes an established http connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same http server using the connect function
+inline bool lock_http2_client_nb::close(){ // this closes an established http connection although the object itself still exists till it goes out of scope, the object can be connected to a different or the same http server using the connect function
     
     // we disconnect our underlying connection
     reset();
@@ -3318,5 +3313,3 @@ bool lock_http2_client_nb::close(){ // this closes an established http connectio
     
     return error;
 }
-
-#pragma GCC diagnostic pop
