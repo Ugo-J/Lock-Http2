@@ -375,6 +375,9 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url){
                         // we set our authority pseudo header - this also doesn't change after connecting to the server
                         set_header(":authority", c_host);
 
+                        // we set the lockhttp2 client state to open
+                        client_state = OPEN;
+
                     }
                 
                 }
@@ -654,7 +657,7 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
             // now we can call the connect to server function that would return the configured socket file descriptor
             int sock = connect_to_server(c_host, c_port, interface_address, interface_name);
 
-            if(error == false){
+            if(!error){
             // only continue if no error
 
                 // we create an SSL object for this lock client instance
@@ -753,6 +756,9 @@ lock_http2_client_nb_crtp<T>::lock_http2_client_nb_crtp(std::string_view url, in
 
                                 // we set our authority pseudo header - this also doesn't change after connecting to the server
                                 set_header(":authority", c_host);
+
+                                // we set the lockhttp2 client state to open
+                                client_state = OPEN;
 
                             }
 
@@ -912,33 +918,37 @@ template <typename T>
 int lock_http2_client_nb_crtp<T>::handle_frame_recv(const nghttp2_frame *frame){
 
     // we use this switch case to handle different header types
-    /* switch(frame->hd.type){
+    switch(frame->hd.type){
 
         case NGHTTP2_HEADERS:
 
-            if(frame->hd.flags & NGHTTP2_FLAG_END_STREAM){
+            /* if(frame->hd.flags & NGHTTP2_FLAG_END_STREAM){
 
                 std::cout<<"[Stream "<<frame->hd.stream_id<<"] Response finished (Headers only).\n";
-            }
+            } */
 
             break;
 
         case NGHTTP2_SETTINGS:
 
-            std::cout<<"SETTINGS frame received from server.\n";
+            // std::cout<<"SETTINGS frame received from server.\n";
             break;
 
         case NGHTTP2_PING:
 
-            std::cout<<"PING frame received from server.\n";
+            // std::cout<<"PING frame received from server.\n";
             break;
 
         case NGHTTP2_GOAWAY:
 
             std::cout<<"GOAWAY received - error code: "<<frame->goaway.error_code<<", last_stream_id: "<< frame->goaway.last_stream_id<<"\n";
+
+            // after receiving the goaway frame from the server we close our connection
+            close();
+
             break;
 
-    } */
+    }
 
     return 0;
 }
@@ -1085,378 +1095,33 @@ template <typename T>
 bool lock_http2_client_nb_crtp<T>::ping(){ // sends a ping on an established http connection
     
     if(!error){ // only continue if no error
+
+        // we check that our client is in open state before we continue
+        if(client_state == OPEN){
         
-        // we define our opaque payload which is just 8 bytes of 0s because http2 ping payload must be exactly 8 bytes long
-        uint8_t opaque_payload[8] = {0};
+            // we define our opaque payload which is just 8 bytes of 0s because http2 ping payload must be exactly 8 bytes long
+            uint8_t opaque_payload[8] = {0};
 
-        // now we submit the ping frame to the internal nghttp2 outbound queue
-        int rv = nghttp2_submit_ping(session, NGHTTP2_FLAG_NONE, opaque_payload);
+            // now we submit the ping frame to the internal nghttp2 outbound queue
+            int rv = nghttp2_submit_ping(session, NGHTTP2_FLAG_NONE, opaque_payload);
 
-        // we check that there was no errors
-        if(rv != 0){
+            // we check that there was no errors
+            if(rv != 0){
 
-            strcpy(error_buffer, "Failed to submit ping to session context: ");
-
-            // we concatenate the nghttp2 specific error
-            strcat(error_buffer, nghttp2_strerror(rv));
-        
-            error = true;
-
-            return error;
-
-        }
-
-        // getting here the ping was submitted successfully to the nghttp2 session so now we send it
-
-        // we serialise and send out our request in this loop
-        while(true){
-
-            // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
-            uint8_t* data_ptr = nullptr;
-
-            // we call session mem send2 to serialise our data
-            ssize_t pending_bytes = nghttp2_session_mem_send2(session, const_cast<const uint8_t**>(&data_ptr));
-            
-            if(pending_bytes < 0){
-
-                strcpy(error_buffer, "nghttp2 engine serialization error: ");
+                strcpy(error_buffer, "Failed to submit ping to session context: ");
 
                 // we concatenate the nghttp2 specific error
-                strcat(error_buffer, nghttp2_strerror(pending_bytes));
+                strcat(error_buffer, nghttp2_strerror(rv));
             
                 error = true;
-
-                break;
-                    
-            }
-        
-            if(pending_bytes == 0){
-
-                break; // no more frames left to build for this transmission block so we break out of our serialisation loop
-                
-            }
-
-            // block SIGPIPE signal before attempting to send data, just incase the connection is closed
-            block_sigpipe_signal();
-            
-            int64_t len = 0;
-
-            // keep polling till we have sent the entire frame
-            while(len < pending_bytes){
-
-                int64_t local_len = BIO_write(c_bio, data_ptr, pending_bytes - len);
-
-                if(local_len > 0){
-
-                    len += local_len;
-                            
-                    data_ptr += local_len;
-
-                }
-                else{
-
-                    if(BIO_should_retry(c_bio)){
-
-                        continue;
-
-                    }
-                    else{
-
-                        // here wolfssl_read couldn't send any extra data
-                        strcpy(error_buffer, "Write failure while transmitting outbound queue in ping request.");
-
-                        error = true;
-                        
-                        unblock_sigpipe_signal();
-
-                        // we return from this function
-                        return error;
-                        
-                    }
-
-                }
-
-            }
-
-            // getting here the send request succeeds
-
-            // we unblock the sigpipe signal
-            unblock_sigpipe_signal();
-
-        }
-
-
-    }
-    
-    return error;
-    
-}
-
-template <typename T>
-inline bool lock_http2_client_nb_crtp<T>::clear(){ // clear the error flag of a lock client in open state
-
-    if(client_state == OPEN){
-            
-        memset(error_buffer, '\0', strlen(error_buffer));
-            
-        error = false;
-            
-    }
-        
-    return error;
-    
-}
-
-template <typename T>
-bool lock_http2_client_nb_crtp<T>::send(char* path, char* payload_data, int method, int id){ // sends data passed as parameter along an established http connection
-
-    if(!error){ // only continue if no error
-    
-        // we check that the supplied method int is within the valid range - we return true to indicate that this send failed but we don't set the error flag to true
-        if(method < 0 || method > std::size(methods) - 1) return true;
-
-        // we update our method pseudo header with the supplied method
-        update_header(const_cast<char*>(methods[method]), method_index);
-
-        // we update our path pseudo header with the supplied path
-        update_header(path, path_index);
-
-        // our scheme and authority pseudo headers remain constant so we don't update it
-
-        // we setup and initialise our data provider
-        nghttp2_data_provider2 provider;
-
-        // we set up our provider nghttp2 data provider if our payload data is non null
-        if(payload_data != nullptr){
-
-            // nghttp2_data_provider2.source is a union not a struct containing a ptr and an fd element, so we only use the ptr and point it to our send data provider struct
-
-            // we initialise our send data provider with our data
-            send_data_provider.data = payload_data;
-
-            // we set our payload data len
-            send_data_provider.data_len = strlen(payload_data);
-
-            // we set our nghttp2 data provider 2 source pointer to our send provider struct
-            provider.source.ptr = static_cast<void*>(&send_data_provider);
-
-            // provider.source.fd = (payload_data != nullptr) ? strlen(payload_data) : 0; - we don't update our provider.source.fd since we use the provider.source.ptr
-
-            // we set our provider read callback
-            provider.read_callback = send_body_provider_cb;
-
-        }
-
-        // we fetch our next free data array we would use to store this stream's response depending on whether or not we are prioritising heap
-        int slot = prioritise_heap ? acquire_heap() : acquire();
-
-        // we check that we acquired a valid slot
-        if(slot < 0){
-
-            strcpy(error_buffer, "Error acquiring data slot for http request");
-
-            error = true;
-
-            return error;
-
-        }
-
-        // getting here we have acquired an initialised data slot we now store the user supplied id in our metadata slot
-        metadata[slot].user_id = id;
-
-        // we submit our request and fetch the stream_id - we pas our metadata slot as a void pointer to this request
-        int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, num_of_headers, (payload_data != nullptr) ? &provider : nullptr, static_cast<void*>(&metadata[slot]));
-
-        if(stream_id < 0){
-
-            strcpy(error_buffer, "Failed to submit request to session context: ");
-
-            // we concatenate the nghttp2 specific error
-            strcat(error_buffer, nghttp2_strerror(stream_id));
-        
-            error = true;
-
-            return error;
-
-        }
-
-        // getting the the request was successfully submitted to the nghttp2 session so now we send it
-
-        // we serialise and send out our request in this loop
-        while(true){
-
-            // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
-            uint8_t* data_ptr = nullptr;
-
-            // we call session mem send2 to serialise our data, this function calls our data provider callback which copies our supplied data to the ession's intrnal buffers
-            ssize_t pending_bytes = nghttp2_session_mem_send2(session, const_cast<const uint8_t**>(&data_ptr));
-            
-            if(pending_bytes < 0){
-
-                strcpy(error_buffer, "nghttp2 engine serialization error: ");
-
-                // we concatenate the nghttp2 specific error
-                strcat(error_buffer, nghttp2_strerror(pending_bytes));
-            
-                error = true;
-
-                break;
-                    
-            }
-        
-            if(pending_bytes == 0){
-
-                break; // no more frames left to build for this transmission block so we break out of our serialisation loop
-                
-            }
-
-            // block SIGPIPE signal before attempting to send data, just incase the connection is closed
-            block_sigpipe_signal();
-            
-            int64_t len = 0;
-
-            // keep polling till we have sent the entire frame
-            while(len < pending_bytes){
-
-                int64_t local_len = BIO_write(c_bio, data_ptr, pending_bytes - len);
-
-                if(local_len > 0){
-
-                    len += local_len;
-                            
-                    data_ptr += local_len;
-
-                }
-                else{
-
-                    if(BIO_should_retry(c_bio)){
-
-                        continue;
-
-                    }
-                    else{
-
-                        // here wolfssl_read couldn't send any extra data
-                        strcpy(error_buffer, "Write failure while transmitting outbound queue.");
-
-                        error = true;
-                        
-                        unblock_sigpipe_signal();
-
-                        // we return from this function
-                        return error;
-                        
-                    }
-
-                }
-
-            }
-
-            // getting here the send request succeeds
-
-            // we unblock the sigpipe signal
-            unblock_sigpipe_signal();
-
-        }
-
-
-    }
-        
-    return error;
-    
-}
-
-template <typename T>
-inline int lock_http2_client_nb_crtp<T>::recv_data(char* data_array, int length_of_array_data, int length_of_array, int id){
-    
-    return static_cast<T*>(this)->recv_data(data_array, length_of_array_data, length_of_array, id);
-    
-}
-
-template <typename T>
-int lock_http2_client_nb_crtp<T>::recv_error(int user_id){
-
-    // this function simply calls the recv error function of the derived class
-    return static_cast<T*>(this)->recv_error(user_id);
-
-}
-
-template <typename T>
-int lock_http2_client_nb_crtp<T>::recv_header(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id){
-
-    // this function simply calls the recv header function of the derived class
-    return static_cast<T*>(this)->recv_header(name, namelen, value, valuelen, user_id);
-
-}
-
-template <typename T>
-bool lock_http2_client_nb_crtp<T>::basic_read(){
-
-    if(!error){ // only continue if no error
-        
-        // block SIGPIPE signal before attempting to read data, just incase the connection is closed
-        block_sigpipe_signal();
-
-        // we check if there is any available data to be read
-        int len = BIO_read(c_bio, data_array, DATA_ARRAY_LENGTH);
-
-        // if bio_read returns a value <= 0 we check if there is data available to be read
-        if(len <= 0){
-
-            // we check if the read error was caused by no data to read
-            if(BIO_should_retry(c_bio)){
-
-                // getting here no data is available to read so we unblock our sigpipe sigal and exit
-
-                // we unblock the sigpipe signal
-                unblock_sigpipe_signal();
-
-                // we return error at this point because it is still 0 and it signals that basic read didn't fail there just is no data to read
-                return error;
-
-
-            }
-            else{
-
-                // here openssl_read couldn't fetch any data
-                strcpy(error_buffer, "Read failure while polling inbound queue: ");
-
-                // we fetch the openssl error
-                unsigned long ssl_err = ERR_get_error();
-
-                if(ssl_err != 0){
-                    ERR_error_string(ssl_err, error_buffer + strlen(error_buffer));
-                }
-                else{
-                    strcat(error_buffer, "connection closed without close_notify");
-                }
-
-                error = true;
-
-                // we unblock the sigpipe signal
-                unblock_sigpipe_signal();
 
                 return error;
 
             }
 
-        }
+            // getting here the ping was submitted successfully to the nghttp2 session so now we send it
 
-        // we read the raw TLS bytes and hand them over to the HTTP/2 engine. this call internally triggers our registered header/data callbacks with the corresponding data
-        ssize_t processed_bytes = nghttp2_session_mem_recv2(session, reinterpret_cast<const uint8_t*>(data_array), (size_t)len);
-        
-        if(processed_bytes < 0){
-
-            strcpy(error_buffer, "nghttp2 deserialization error: ");
-            strcat(error_buffer, nghttp2_strerror(processed_bytes));
-            error = true;
-
-        }
-
-        // we check if there are any pending frames like control frames to be sent - if there is we send it out
-        if(nghttp2_session_want_write(session)){
-
-            // we serialise and send out the pending bytes in this loop
+            // we serialise and send out our request in this loop
             while(true){
 
                 // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
@@ -1484,7 +1149,193 @@ bool lock_http2_client_nb_crtp<T>::basic_read(){
                     
                 }
 
-                // SIGPIPE signal is still blocked so we continue without blocking it
+                // block SIGPIPE signal before attempting to send data, just incase the connection is closed
+                block_sigpipe_signal();
+                
+                int64_t len = 0;
+
+                // keep polling till we have sent the entire frame
+                while(len < pending_bytes){
+
+                    int64_t local_len = BIO_write(c_bio, data_ptr, pending_bytes - len);
+
+                    if(local_len > 0){
+
+                        len += local_len;
+                                
+                        data_ptr += local_len;
+
+                    }
+                    else{
+
+                        if(BIO_should_retry(c_bio)){
+
+                            continue;
+
+                        }
+                        else{
+
+                            // here wolfssl_read couldn't send any extra data
+                            strcpy(error_buffer, "Write failure while transmitting outbound queue in ping request.");
+
+                            error = true;
+                            
+                            unblock_sigpipe_signal();
+
+                            // we return from this function
+                            return error;
+                            
+                        }
+
+                    }
+
+                }
+
+                // getting here the send request succeeds
+
+                // we unblock the sigpipe signal
+                unblock_sigpipe_signal();
+
+            }
+
+        }
+        else{
+
+            strcpy(error_buffer, "Lock Http2 Client not connected");
+                
+            error = true;
+
+        }
+
+    }
+    
+    return error;
+    
+}
+
+template <typename T>
+inline bool lock_http2_client_nb_crtp<T>::clear(){ // clear the error flag of a lock client in open state
+
+    if(client_state == OPEN){
+            
+        memset(error_buffer, '\0', strlen(error_buffer));
+            
+        error = false;
+            
+    }
+        
+    return error;
+    
+}
+
+template <typename T>
+bool lock_http2_client_nb_crtp<T>::send(char* path, char* payload_data, int method, int id){ // sends data passed as parameter along an established http connection
+
+    if(!error){ // only continue if no error
+
+        // we check that our client is in open state before we continue
+        if(client_state == OPEN){
+    
+            // we check that the supplied method int is within the valid range - we return true to indicate that this send failed but we don't set the error flag to true
+            if(method < 0 || method > std::size(methods) - 1) return true;
+
+            // we update our method pseudo header with the supplied method
+            update_header(const_cast<char*>(methods[method]), method_index);
+
+            // we update our path pseudo header with the supplied path
+            update_header(path, path_index);
+
+            // our scheme and authority pseudo headers remain constant so we don't update it
+
+            // we setup and initialise our data provider
+            nghttp2_data_provider2 provider;
+
+            // we set up our provider nghttp2 data provider if our payload data is non null
+            if(payload_data != nullptr){
+
+                // nghttp2_data_provider2.source is a union not a struct containing a ptr and an fd element, so we only use the ptr and point it to our send data provider struct
+
+                // we initialise our send data provider with our data
+                send_data_provider.data = payload_data;
+
+                // we set our payload data len
+                send_data_provider.data_len = strlen(payload_data);
+
+                // we set our nghttp2 data provider 2 source pointer to our send provider struct
+                provider.source.ptr = static_cast<void*>(&send_data_provider);
+
+                // provider.source.fd = (payload_data != nullptr) ? strlen(payload_data) : 0; - we don't update our provider.source.fd since we use the provider.source.ptr
+
+                // we set our provider read callback
+                provider.read_callback = send_body_provider_cb;
+
+            }
+
+            // we fetch our next free data array we would use to store this stream's response depending on whether or not we are prioritising heap
+            int slot = prioritise_heap ? acquire_heap() : acquire();
+
+            // we check that we acquired a valid slot
+            if(slot < 0){
+
+                strcpy(error_buffer, "Error acquiring data slot for http request");
+
+                error = true;
+
+                return error;
+
+            }
+
+            // getting here we have acquired an initialised data slot we now store the user supplied id in our metadata slot
+            metadata[slot].user_id = id;
+
+            // we submit our request and fetch the stream_id - we pas our metadata slot as a void pointer to this request
+            int32_t stream_id = nghttp2_submit_request2(session, nullptr, hdrs, num_of_headers, (payload_data != nullptr) ? &provider : nullptr, static_cast<void*>(&metadata[slot]));
+
+            if(stream_id < 0){
+
+                strcpy(error_buffer, "Failed to submit request to session context: ");
+
+                // we concatenate the nghttp2 specific error
+                strcat(error_buffer, nghttp2_strerror(stream_id));
+            
+                error = true;
+
+                return error;
+
+            }
+
+            // getting the the request was successfully submitted to the nghttp2 session so now we send it
+
+            // we serialise and send out our request in this loop
+            while(true){
+
+                // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
+                uint8_t* data_ptr = nullptr;
+
+                // we call session mem send2 to serialise our data, this function calls our data provider callback which copies our supplied data to the ession's intrnal buffers
+                ssize_t pending_bytes = nghttp2_session_mem_send2(session, const_cast<const uint8_t**>(&data_ptr));
+                
+                if(pending_bytes < 0){
+
+                    strcpy(error_buffer, "nghttp2 engine serialization error: ");
+
+                    // we concatenate the nghttp2 specific error
+                    strcat(error_buffer, nghttp2_strerror(pending_bytes));
+                
+                    error = true;
+
+                    break;
+                        
+                }
+            
+                if(pending_bytes == 0){
+
+                    break; // no more frames left to build for this transmission block so we break out of our serialisation loop
+                    
+                }
+
+                // block SIGPIPE signal before attempting to send data, just incase the connection is closed
+                block_sigpipe_signal();
                 
                 int64_t len = 0;
 
@@ -1525,14 +1376,208 @@ bool lock_http2_client_nb_crtp<T>::basic_read(){
 
                 }
 
-                // getting here the send of pending bytes succeeds
+                // getting here the send request succeeds
+
+                // we unblock the sigpipe signal
+                unblock_sigpipe_signal();
 
             }
 
         }
+        else{
 
-        // we unblock the sigpipe signal
-        unblock_sigpipe_signal();
+            strcpy(error_buffer, "Lock Http2 Client not connected");
+                
+            error = true;
+
+        }
+
+
+    }
+        
+    return error;
+    
+}
+
+template <typename T>
+inline int lock_http2_client_nb_crtp<T>::recv_data(char* data_array, int length_of_array_data, int length_of_array, int id){
+    
+    return static_cast<T*>(this)->recv_data(data_array, length_of_array_data, length_of_array, id);
+    
+}
+
+template <typename T>
+int lock_http2_client_nb_crtp<T>::recv_error(int user_id){
+
+    // this function simply calls the recv error function of the derived class
+    return static_cast<T*>(this)->recv_error(user_id);
+
+}
+
+template <typename T>
+int lock_http2_client_nb_crtp<T>::recv_header(const char* name, size_t namelen, const char* value, size_t valuelen, int user_id){
+
+    // this function simply calls the recv header function of the derived class
+    return static_cast<T*>(this)->recv_header(name, namelen, value, valuelen, user_id);
+
+}
+
+template <typename T>
+bool lock_http2_client_nb_crtp<T>::basic_read(){
+
+    if(!error){ // only continue if no error
+
+        // we check that our client is in open state before we continue
+        if(client_state == OPEN){
+        
+            // block SIGPIPE signal before attempting to read data, just incase the connection is closed
+            block_sigpipe_signal();
+
+            // we check if there is any available data to be read
+            int len = BIO_read(c_bio, data_array, DATA_ARRAY_LENGTH);
+
+            // if bio_read returns a value <= 0 we check if there is data available to be read
+            if(len <= 0){
+
+                // we check if the read error was caused by no data to read
+                if(BIO_should_retry(c_bio)){
+
+                    // getting here no data is available to read so we unblock our sigpipe sigal and exit
+
+                    // we unblock the sigpipe signal
+                    unblock_sigpipe_signal();
+
+                    // we return error at this point because it is still 0 and it signals that basic read didn't fail there just is no data to read
+                    return error;
+
+
+                }
+                else{
+
+                    // here openssl_read couldn't fetch any data
+                    strcpy(error_buffer, "Read failure while polling inbound queue: ");
+
+                    // we fetch the openssl error
+                    unsigned long ssl_err = ERR_get_error();
+
+                    if(ssl_err != 0){
+                        ERR_error_string(ssl_err, error_buffer + strlen(error_buffer));
+                    }
+                    else{
+                        strcat(error_buffer, "connection closed without close_notify");
+                    }
+
+                    error = true;
+
+                    // we unblock the sigpipe signal
+                    unblock_sigpipe_signal();
+
+                    return error;
+
+                }
+
+            }
+
+            // we read the raw TLS bytes and hand them over to the HTTP/2 engine. this call internally triggers our registered header/data callbacks with the corresponding data
+            ssize_t processed_bytes = nghttp2_session_mem_recv2(session, reinterpret_cast<const uint8_t*>(data_array), (size_t)len);
+            
+            if(processed_bytes < 0){
+
+                strcpy(error_buffer, "nghttp2 deserialization error: ");
+                strcat(error_buffer, nghttp2_strerror(processed_bytes));
+                error = true;
+
+            }
+
+            // we check if there are any pending frames like control frames to be sent - if there is we send it out
+            if(nghttp2_session_want_write(session)){
+
+                // we serialise and send out the pending bytes in this loop
+                while(true){
+
+                    // this pointer we would pass to session mem send to store the location of the internal buffer holding the serialised bytes
+                    uint8_t* data_ptr = nullptr;
+
+                    // we call session mem send2 to serialise our data
+                    ssize_t pending_bytes = nghttp2_session_mem_send2(session, const_cast<const uint8_t**>(&data_ptr));
+                    
+                    if(pending_bytes < 0){
+
+                        strcpy(error_buffer, "nghttp2 engine serialization error: ");
+
+                        // we concatenate the nghttp2 specific error
+                        strcat(error_buffer, nghttp2_strerror(pending_bytes));
+                    
+                        error = true;
+
+                        break;
+                            
+                    }
+                
+                    if(pending_bytes == 0){
+
+                        break; // no more frames left to build for this transmission block so we break out of our serialisation loop
+                        
+                    }
+
+                    // SIGPIPE signal is still blocked so we continue without blocking it
+                    
+                    int64_t len = 0;
+
+                    // keep polling till we have sent the entire frame
+                    while(len < pending_bytes){
+
+                        int64_t local_len = BIO_write(c_bio, data_ptr, pending_bytes - len);
+
+                        if(local_len > 0){
+
+                            len += local_len;
+                                    
+                            data_ptr += local_len;
+
+                        }
+                        else{
+
+                            if(BIO_should_retry(c_bio)){
+
+                                continue;
+
+                            }
+                            else{
+
+                                // here wolfssl_read couldn't send any extra data
+                                strcpy(error_buffer, "Write failure while transmitting outbound queue.");
+
+                                error = true;
+                                
+                                unblock_sigpipe_signal();
+
+                                // we return from this function
+                                return error;
+                                
+                            }
+
+                        }
+
+                    }
+
+                    // getting here the send of pending bytes succeeds
+
+                }
+
+            }
+
+            // we unblock the sigpipe signal
+            unblock_sigpipe_signal();
+
+        }
+        else{
+
+            strcpy(error_buffer, "Lock Http2 Client not connected");
+                
+            error = true;
+
+        }
 
     }
         
@@ -1927,6 +1972,9 @@ bool lock_http2_client_nb_crtp<T>::connect(std::string_view url){ // this is use
                         // we set our authority pseudo header - this also doesn't change after connecting to the server
                         set_header(":authority", c_host);
 
+                        // we set the lockhttp2 client state to open
+                        client_state = OPEN;
+
                     }
                 
                 }
@@ -2219,7 +2267,7 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
             // now we can call the connect to server function that would return the configured socket file descriptor
             int sock = connect_to_server(c_host, c_port, interface_address, interface_name);
 
-            if(error == false){
+            if(!error){
             // only continue if no error
 
                 // we create an SSL object for this lock client instance if one hasn't been created before
@@ -2320,6 +2368,9 @@ bool lock_http2_client_nb_crtp<T>::interface_connect(std::string_view url, in_ad
 
                                 // we set our authority pseudo header - this also doesn't change after connecting to the server
                                 set_header(":authority", c_host);
+
+                                // we set the lockhttp2 client state to open
+                                client_state = OPEN;
 
                             }
 
