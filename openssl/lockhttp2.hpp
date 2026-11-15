@@ -908,33 +908,37 @@ inline int lock_http2_client_nb::on_header_cb(nghttp2_session *session, const ng
 inline int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
 
     // we use this switch case to handle different header types
-    /* switch(frame->hd.type){
+    switch(frame->hd.type){
 
         case NGHTTP2_HEADERS:
 
-            if(frame->hd.flags & NGHTTP2_FLAG_END_STREAM){
+            /* if(frame->hd.flags & NGHTTP2_FLAG_END_STREAM){
 
                 std::cout<<"[Stream "<<frame->hd.stream_id<<"] Response finished (Headers only).\n";
-            }
+            } */
 
             break;
 
         case NGHTTP2_SETTINGS:
 
-            std::cout<<"SETTINGS frame received from server.\n";
+            // std::cout<<"SETTINGS frame received from server.\n";
             break;
 
         case NGHTTP2_PING:
 
-            std::cout<<"PING frame received from server.\n";
+            // std::cout<<"PING frame received from server.\n";
             break;
 
         case NGHTTP2_GOAWAY:
 
             std::cout<<"GOAWAY received - error code: "<<frame->goaway.error_code<<", last_stream_id: "<< frame->goaway.last_stream_id<<"\n";
+
+            // after receiving the goaway frame from the server we close our connection
+            close();
+
             break;
 
-    } */
+    }
 
     return 0;
 }
