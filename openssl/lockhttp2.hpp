@@ -374,6 +374,9 @@ inline lock_http2_client_nb::lock_http2_client_nb(std::string_view url){
                         // we set our authority pseudo header - this also doesn't change after connecting to the server
                         set_header(":authority", c_host);
 
+                        // we set the lockhttp2 client state to open
+                        client_state = OPEN;
+
                     }
                 
                 }
@@ -652,7 +655,7 @@ inline lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr*
             // now we can call the connect to server function that would return the configured socket file descriptor
             int sock = connect_to_server(c_host, c_port, interface_address, interface_name);
 
-            if(error == false){
+            if(!error){
             // only continue if no error
 
                 // we create an SSL object for this lock client instance
@@ -751,6 +754,9 @@ inline lock_http2_client_nb::lock_http2_client_nb(std::string_view url, in_addr*
 
                                 // we set our authority pseudo header - this also doesn't change after connecting to the server
                                 set_header(":authority", c_host);
+
+                                // we set the lockhttp2 client state to open
+                                client_state = OPEN;
 
                             }
 
@@ -1923,6 +1929,9 @@ inline bool lock_http2_client_nb::connect(std::string_view url){ // this is used
                         // we set our authority pseudo header - this also doesn't change after connecting to the server
                         set_header(":authority", c_host);
 
+                        // we set the lockhttp2 client state to open
+                        client_state = OPEN;
+
                     }
                 
                 }
@@ -2315,6 +2324,9 @@ inline bool lock_http2_client_nb::interface_connect(std::string_view url, in_add
 
                                 // we set our authority pseudo header - this also doesn't change after connecting to the server
                                 set_header(":authority", c_host);
+
+                                // we set the lockhttp2 client state to open
+                                client_state = OPEN;
 
                             }
 

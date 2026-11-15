@@ -1,4 +1,5 @@
 // this header file defines the meta data struct that passed as the user data to every nghttp2 request
+#pragma once
 
 struct meta_data {
 
