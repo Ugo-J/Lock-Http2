@@ -1087,7 +1087,7 @@ inline bool lock_http2_client_nb::ping(){ // sends a ping on an established http
     
     if(!error){ // only continue if no error
 
-        // we check that our client is in open state before we continue
+        // we check that our client is not in closed state before we continue
         if(client_state != CLOSED){
         
             // we define our opaque payload which is just 8 bytes of 0s because http2 ping payload must be exactly 8 bytes long
@@ -1447,7 +1447,7 @@ inline bool lock_http2_client_nb::basic_read(){
 
     if(!error){ // only continue if no error
 
-        // we check that our client is in open state before we continue
+        // we check that our client is not in closed state before we continue
         if(client_state != CLOSED){
         
             // block SIGPIPE signal before attempting to read data, just incase the connection is closed

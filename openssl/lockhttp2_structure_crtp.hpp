@@ -115,6 +115,7 @@ private:
     
     inline static const unsigned char OPEN = (unsigned char)0;
     inline static const unsigned char CLOSED = (unsigned char)1;
+    inline static const unsigned char CLOSING = (unsigned char)2;
    
 // instance variables for receiving data
 private:
@@ -157,6 +158,11 @@ private:
     int acquire_heap(int sz);
 
     void release(int slot);
+
+// the check open stream function for checking when we have at least one open stream - we check this by counting our static & heap slots because every open stream must hold one slot
+private:
+
+    bool check_open_stream() const { return static_mask != ~uint32_t{0} || heap_mask != ~uint64_t{0}; }
 
 // variable for receiving the http2 binary data from the network before passing it to http2
 private:
