@@ -3161,5 +3161,9 @@ inline bool lock_http2_client_nb::close(){ // this closes an established https c
     // we set our client state to closed
     client_state = CLOSED;
 
+    // we reset our static and heap masks freeing any unfreed slot
+    static_mask = ~uint32_t{0};
+    heap_mask = ~uint64_t{0};
+
     return error;
 }
