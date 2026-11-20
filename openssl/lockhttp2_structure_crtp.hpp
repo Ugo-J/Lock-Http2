@@ -26,7 +26,7 @@ public:
     bool basic_read();
     bool clear(); // this function is used to clear the error flags of lock clients in open state, error flags of lock clients in closed state can only be cleared by calling the connect function
 
-private:
+protected:
 // pointers to receive functions
 
     // recv data function
@@ -39,14 +39,14 @@ private:
     int recv_error(int user_id);
     
 // private class functions
-private:
+protected:
     
     inline void block_sigpipe_signal(); // function to block sigpipe signals before any write or read
     void unblock_sigpipe_signal(); // function to unblock sigpipe signals after any write or read
     int connect_to_server(const char *hostname, const char *port, in_addr* interface_address, const char *interface_name); // function to connect to server when we manually configure the socket
 
 // nghttp2 callback functions
-private:
+protected:
 
     // on frame receive call back function
     static int on_frame_recv_cb(nghttp2_session *session, const nghttp2_frame *frame, void *user_data);
@@ -64,14 +64,14 @@ private:
     static long send_body_provider_cb(nghttp2_session *session, int32_t stream_id, uint8_t *buf, size_t length, uint32_t *data_flags, nghttp2_data_source *source, void *user_data);
 
 // data handling functions - these are the functions the nghttp2 callbacks call
-private:
+protected:
 
     int handle_frame_recv(const nghttp2_frame *frame);
     int handle_data_chunk(uint8_t flags, int32_t stream_id, const uint8_t *data, size_t len);
     int handle_stream_close(int32_t stream_id, uint32_t error_code);
 
 // private signal handling variables
-private: 
+protected: 
     
     sigset_t oldset; // sigset variable for holding the old signal mask
     sigset_t newset; // sigset variable for holding the signal mask of the signal(s) we wish to block
@@ -79,12 +79,12 @@ private:
     timespec ts = {0}; // structure that stores the time wait for the sigtimedwait function to return, it is initialised to 0 meaning that we don't wait
     
 // class wide variables    
-private:    
+protected:    
     
     inline static SSL_CTX* ssl_ctx = NULL;
     
 // instance connection data variables     
-private:
+protected:
     
     static const int url_static_array_length = 1024;
     char c_url_static[url_static_array_length] = {'\0'}; // this url to which the connection is to be made is copied into this array
@@ -102,7 +102,7 @@ private:
     unsigned char client_state = CLOSED; // this variable is used to store the lock client state, OPEN meaning there is an active http2 connection and CLOSED meaning that there isn't 
     
 // Openssl & nghttp2 Library instance variables    
-private:
+protected:
         
    BIO* c_bio = NULL; // sets the lock_http2_client instance connection handle
    SSL* c_ssl = NULL; // defines the ssl object that is used to set instance-specific openssl options
@@ -111,14 +111,14 @@ private:
    static constexpr unsigned int MAX_CONCURRENT_STREAMS = 32 + 64; // this holds the max number of streams each lockhttp2 client can hold. a stream is essentially a request to a server pending a response, so the max concurrent streams is essentially the number of unresponded streams we can have on this handle. we set the max concurrent streams to account for our total available data arrays which is 32 for the static array and 64 for the heap array
 
 // lock client states
-private: 
+protected: 
     
     inline static const unsigned char OPEN = (unsigned char)0;
     inline static const unsigned char CLOSED = (unsigned char)1;
     inline static const unsigned char CLOSING = (unsigned char)2;
    
 // instance variables for receiving data
-private:
+protected:
     
     // we declare our meta data array, our meta data array is declared large enough to hold the metadata for our max concurrent streams
     meta_data metadata[MAX_CONCURRENT_STREAMS];
@@ -137,7 +137,7 @@ public:
     int reserve(int num_of_slots, int size, bool priori_heap = true);
 
 // acquire & release functions for acquiring the next free static array
-private:
+protected:
 
     // this function indicates whether we are prioritising the heap slots or static slots when acquiring slots
     bool prioritise_heap = false;
@@ -160,18 +160,18 @@ private:
     void release(int slot);
 
 // the check open stream function for checking when we have at least one open stream - we check this by counting our static & heap slots because every open stream must hold one slot
-private:
+protected:
 
     bool check_open_stream() const { return static_mask != ~uint32_t{0} || heap_mask != ~uint64_t{0}; }
 
 // variable for receiving the http2 binary data from the network before passing it to http2
-private:
+protected:
 
     inline static const int DATA_ARRAY_LENGTH = 32 * 1024;
     char data_array[DATA_ARRAY_LENGTH] = {'\0'}; // array for holding received data before passing to nghttp2
 
 // struct that our data provider points to during a data send
-private:
+protected:
 
     struct{
 
@@ -190,7 +190,7 @@ public:
     static inline constexpr int DELETE = 4;
 
 // array to convert the http method to their corresponding text
-private:
+protected:
 
     static constexpr const char* methods[] = {"GET", "POST", "PUT", "PATCH", "DELETE"};
 
@@ -246,7 +246,7 @@ public:
     int clear_headers();
 
 // function to clear all headers
-private:
+protected:
 
     // this function clears all headers including pseudo headers
     int clear_all_headers();
