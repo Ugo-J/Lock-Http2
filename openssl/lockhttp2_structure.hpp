@@ -168,7 +168,7 @@ private:
 
     void release(int slot);
 
-// the check open stream function for checking when we have at least one open stream - we chck this by counting our static & heap slots because every open stream must hold one slot
+// the check open stream function for checking when we have at least one open stream - we check this by counting our static & heap slots because every open stream must hold one slot
 private:
 
     bool check_open_stream() const { return static_mask != ~uint32_t{0} || heap_mask != ~uint64_t{0}; }
