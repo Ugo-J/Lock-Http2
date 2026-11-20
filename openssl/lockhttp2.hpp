@@ -933,8 +933,8 @@ inline int lock_http2_client_nb::handle_frame_recv(const nghttp2_frame *frame){
 
             std::cout<<"GOAWAY received - error code: "<<frame->goaway.error_code<<", last_stream_id: "<< frame->goaway.last_stream_id<<"\n";
 
-            // after receiving the goaway frame from the server we close our connection
-            close();
+            // after receiving the goaway frame from the server we set oue client state to CLOSING
+            client_state = CLOSING;
 
             break;
 
@@ -1376,9 +1376,31 @@ inline bool lock_http2_client_nb::send(char* path, char* payload_data, int metho
         }
         else{
 
-            strcpy(error_buffer, "Lock Http2 Client not connected");
-                
-            error = true;
+            // we check if the client state is closed
+            if(client_state == CLOSED){
+
+                strcpy(error_buffer, "Lock Http2 Client not connected");
+                    
+                error = true;
+
+            }
+            else if(client_state == CLOSING){
+
+                // the closing state only blocks a send and not a basic read or a ping
+
+                // getting here the client state is closing so we check if we have any open stream, if we have no open stream we set the error flag
+                if(!check_open_stream()){
+
+                    strcpy(error_buffer, "Lock Http2 Client in closing state");
+                    
+                    error = true;
+
+                }
+
+                // we return true to indicate that the write failed but whether we set the error flag depends on whether we still have any open stream
+                return true;
+
+            }
 
         }
 
