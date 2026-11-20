@@ -1132,8 +1132,8 @@ int lock_http2_client_nb_crtp<T>::handle_frame_recv(const nghttp2_frame *frame){
 
             std::cout<<"GOAWAY received - error code: "<<frame->goaway.error_code<<", last_stream_id: "<< frame->goaway.last_stream_id<<"\n";
 
-            // after receiving the goaway frame from the server we close our connection
-            close();
+            // after receiving the goaway frame from the server we set oue client state to CLOSING
+            client_state = CLOSING;
 
             break;
 
@@ -1285,8 +1285,8 @@ bool lock_http2_client_nb_crtp<T>::ping(){ // sends a ping on an established htt
     
     if(!error){ // only continue if no error
         
-        // we check that our client is in open state before we continue
-        if(client_state == OPEN){
+        // we check that our client is not in closed state before we continue
+        if(client_state != CLOSED){
 
             // we define our opaque payload which is just 8 bytes of 0s because http2 ping payload must be exactly 8 bytes long
             uint8_t opaque_payload[8] = {0};
@@ -1583,9 +1583,31 @@ bool lock_http2_client_nb_crtp<T>::send(char* path, char* payload_data, int meth
         }
         else{
 
-            strcpy(error_buffer, "Lock Http2 Client not connected");
-                
-            error = true;
+            // we check if the client state is closed
+            if(client_state == CLOSED){
+
+                strcpy(error_buffer, "Lock Http2 Client not connected");
+                    
+                error = true;
+
+            }
+            else if(client_state == CLOSING){
+
+                // the closing state only blocks a send and not a basic read or a ping
+
+                // getting here the client state is closing so we check if we have any open stream, if we have no open stream we set the error flag
+                if(!check_open_stream()){
+
+                    strcpy(error_buffer, "Lock Http2 Client in closing state");
+                    
+                    error = true;
+
+                }
+
+                // we return true to indicate that the write failed but whether we set the error flag depends on whether we still have any open stream
+                return true;
+
+            }
 
         }
 
@@ -1625,8 +1647,8 @@ bool lock_http2_client_nb_crtp<T>::basic_read(){
 
     if(!error){ // only continue if no error
 
-        // we check that our client is in open state before we continue
-        if(client_state == OPEN){
+        // we check that our client is not in closed state before we continue
+        if(client_state != CLOSED){
         
             // block SIGPIPE signal before attempting to read data, just incase the connection is closed
             block_sigpipe_signal();
@@ -3331,7 +3353,21 @@ int lock_http2_client_nb_crtp<T>::clear_all_headers(){
 template <typename T>
 int lock_http2_client_nb_crtp<T>::reset(){
 
-    if(!c_ssl) return 0;
+    if(c_ssl != nullptr){
+
+        // we fetch the active socket fd
+        int sockfd = wolfSSL_get_fd(c_ssl);
+
+        // if a valid socket is bound, we first close it effectively disconnecting it
+        if(sockfd >= 0) ::close(sockfd);
+
+        // we free our wolfssl object
+        wolfSSL_free(c_ssl);
+
+        // we set our c_ssl pointer to null
+        c_ssl = nullptr;
+
+    }
 
     // we destroy our nghttp2 session object
     if(session != nullptr){
@@ -3340,18 +3376,6 @@ int lock_http2_client_nb_crtp<T>::reset(){
         session = nullptr;
 
     }
-
-    // we fetch the active socket fd
-    int sockfd = wolfSSL_get_fd(c_ssl);
-
-    // if a valid socket is bound, we first close it effectively disconnecting it
-    if(sockfd >= 0) ::close(sockfd);
-
-    // we free our wolfssl object
-    wolfSSL_free(c_ssl);
-
-    // we set our c_ssl pointer to null
-    c_ssl = nullptr;
 
     return 0;
 
@@ -3386,6 +3410,10 @@ bool lock_http2_client_nb_crtp<T>::close(){ // this closes an established http c
     reset();
 
     client_state = CLOSED;
+
+    // we reset our static and heap masks freeing any unfreed slot
+    static_mask = ~uint32_t{0};
+    heap_mask = ~uint64_t{0};
     
     return error;
 }
